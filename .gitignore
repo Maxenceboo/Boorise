@@ -1,0 +1,6 @@
+# folders config for IDEs
+.idea
+.vscode
+
+# dependencies
+/node_modules

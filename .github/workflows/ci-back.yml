@@ -33,7 +33,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=boorise-back
-            -Dsonar.projectName=Boorise Back
+            -Dsonar.projectName='Boorise Back'
             -Dsonar.projectBaseDir=backend
             -Dsonar.sources=src/main
             -Dsonar.tests=src/test

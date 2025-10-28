@@ -35,7 +35,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=boorise-front
-            -Dsonar.projectName=Boorise Front
+            -Dsonar.projectName='Boorise Front'
             -Dsonar.projectBaseDir=frontend
             -Dsonar.sources=src
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**

@@ -34,6 +34,7 @@ jobs:
         uses: SonarSource/sonarcloud-github-action@v2
         with:
           args: >
+            -Dsonar.organization=${{ vars.SONAR_ORG }}
             -Dsonar.projectKey=boorise-front
             -Dsonar.projectName=Boorise_Front
             -Dsonar.projectBaseDir=frontend

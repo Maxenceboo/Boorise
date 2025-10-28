@@ -1,0 +1,53 @@
+name: CI Front
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build-front:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: SonarCloud Scan (Front)
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=boorise-front
+            -Dsonar.projectName=Boorise Front
+            -Dsonar.projectBaseDir=frontend
+            -Dsonar.sources=src
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**
+            -Dsonar.tests=
+            -Dsonar.coverage.exclusions=**
+            -Dsonar.javascript.lcov.reportPaths=
+            -Dsonar.test.inclusions=
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORG: ${{ vars.SONAR_ORG }}
+
+      - name: Quality Gate (Front)
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

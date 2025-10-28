@@ -1,0 +1,51 @@
+name: CI Back
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build-back:
+    name: Build & Test Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build + Test + Coverage
+        run: mvn -B -ntp clean verify jacoco:report
+
+      - name: SonarCloud Scan (Back)
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=boorise-back
+            -Dsonar.projectName=Boorise Back
+            -Dsonar.projectBaseDir=backend
+            -Dsonar.sources=src/main
+            -Dsonar.tests=src/test
+            -Dsonar.java.coveragePlugin=jacoco
+            -Dsonar.junit.reportPaths=target/surefire-reports
+            -Dsonar.jacoco.reportPaths=target/jacoco.exec
+            -Dsonar.exclusions=**/target/**,**/build/**
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORG: ${{ vars.SONAR_ORG }}
+
+      - name: Quality Gate (Back)
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

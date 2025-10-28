@@ -1,17 +1,16 @@
 import { bootstrapApplication } from '@angular/platform-browser';
-import { provideAnimations } from '@angular/platform-browser/animations';
+import { importProvidersFrom } from '@angular/core';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { providePrimeNG } from 'primeng/config';
 
 // choisis un preset : Aura / Lara / Material / Nora
 import Aura from '@primeuix/themes/aura';
-// Si tu préfères Lara :
-// import Lara from '@primeuix/themes/lara';
 
 import { AppComponent } from './app/app.component';
 
 bootstrapApplication(AppComponent, {
   providers: [
-    provideAnimations(),
+    importProvidersFrom(BrowserAnimationsModule),
     providePrimeNG({
       theme: {
         preset: Aura,   // ou Lara, Material, Nora

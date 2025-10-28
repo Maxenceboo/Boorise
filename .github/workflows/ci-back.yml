@@ -33,7 +33,7 @@ jobs:
         uses: SonarSource/sonarcloud-github-action@v2
         with:
           args: >
-            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.organization=${{ vars.SONAR_ORG }}
             -Dsonar.projectKey=BooriseBack
             -Dsonar.projectName=BooriseBack
             -Dsonar.projectBaseDir=backend

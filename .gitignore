@@ -4,3 +4,15 @@
 
 # dependencies
 /node_modules
+
+# Java/Maven
+backend/target/
+backend/.mvn/
+*.iml
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db

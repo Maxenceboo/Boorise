@@ -17,6 +17,7 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +25,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm ci
 
       - name: Build
@@ -34,9 +35,9 @@ jobs:
         uses: SonarSource/sonarcloud-github-action@v2
         with:
           args: >
-            -Dsonar.organization=${{ vars.SONAR_ORG }}
-            -Dsonar.projectKey=boorise-front
-            -Dsonar.projectName=Boorise_Front
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.projectKey=BooriseFront
+            -Dsonar.projectName=BooriseFront
             -Dsonar.projectBaseDir=frontend
             -Dsonar.sources=src
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**
@@ -46,7 +47,6 @@ jobs:
             -Dsonar.test.inclusions=
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_ORG: ${{ vars.SONAR_ORG }}
 
       - name: Quality Gate (Front)
         uses: SonarSource/sonarqube-quality-gate-action@v1

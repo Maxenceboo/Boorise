@@ -17,6 +17,7 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -32,9 +33,9 @@ jobs:
         uses: SonarSource/sonarcloud-github-action@v2
         with:
           args: >
-            -Dsonar.organization=${{ vars.SONAR_ORG }}
-            -Dsonar.projectKey=boorise-back
-            -Dsonar.projectName=Boorise_Back
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.projectKey=BooriseBack
+            -Dsonar.projectName=BooriseBack
             -Dsonar.projectBaseDir=backend
             -Dsonar.sources=src/main
             -Dsonar.tests=src/test
@@ -44,7 +45,6 @@ jobs:
             -Dsonar.exclusions=**/target/**,**/build/**
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_ORG: ${{ vars.SONAR_ORG }}
 
       - name: Quality Gate (Back)
         uses: SonarSource/sonarqube-quality-gate-action@v1

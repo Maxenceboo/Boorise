@@ -12,12 +12,10 @@ permissions:
 
 jobs:
   build-front:
-    name: Build Frontend
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
-
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +23,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Install deps
         run: npm ci
 
       - name: Build
@@ -34,11 +32,11 @@ jobs:
       - name: SonarCloud Scan (Front)
         uses: SonarSource/sonarcloud-github-action@v2
         with:
+          projectBaseDir: frontend
           args: >
-            -Dsonar.organization=${{ vars.SONAR_ORG }}
-            -Dsonar.projectKey=BooriseFront
+            -Dsonar.organization=maxenceboo
+            -Dsonar.projectKey=maxenceboo_BooriseFront
             -Dsonar.projectName=BooriseFront
-            -Dsonar.projectBaseDir=frontend
             -Dsonar.sources=src
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**
             -Dsonar.tests=
@@ -48,7 +46,11 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+      # Ne bloque le pipeline que sur main (optionnel)
       - name: Quality Gate (Front)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: SonarSource/sonarqube-quality-gate-action@v1
+        with:
+          scanMetadataReportFile: frontend/.scannerwork/report-task.txt
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

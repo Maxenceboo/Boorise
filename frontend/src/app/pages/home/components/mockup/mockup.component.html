@@ -1,0 +1,59 @@
+<section id="mockup" class="py-16 overflow-visible relative">
+  <div id="mockup-inner" class="container mx-auto px-4 overflow-visible">
+    <div id="mockup-wrap" class="flex items-center justify-center relative">
+      <!-- diagonal container behind mockup that intentionally overflows horizontally (now a light single color) -->
+      <div
+        id="mockup-diag"
+        class="absolute -left-[18%] top-0 w-[110%] h-96 -skew-x-6 bg-slate-700/10 pointer-events-none"
+      ></div>
+
+      <div
+        id="mockup-frame"
+        class="w-full max-w-3xl transform -rotate-2 hover:rotate-0 transition duration-500 z-10"
+      >
+        <svg
+          id="mockup-svg"
+          viewBox="0 0 900 520"
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-full rounded-2xl shadow-2xl"
+        >
+          <rect id="mockup-bg" x="0" y="0" width="900" height="520" rx="24" fill="#0b1220" />
+          <rect id="mockup-screen" x="34" y="40" width="832" height="432" rx="12" fill="#0f172a" />
+          <g id="mockup-widgets" transform="translate(60,68)">
+            <!-- cards slightly protruding from the mockup screen -->
+            <rect
+              id="mu-1"
+              x="0"
+              y="0"
+              width="620"
+              height="40"
+              rx="6"
+              fill="#ffffff"
+              opacity="0.06"
+            />
+            <rect
+              id="mu-2"
+              x="0"
+              y="62"
+              width="420"
+              height="28"
+              rx="6"
+              fill="#ffffff"
+              opacity="0.06"
+            />
+            <rect
+              id="mu-3"
+              x="0"
+              y="104"
+              width="750"
+              height="240"
+              rx="6"
+              fill="#ffffff"
+              opacity="0.06"
+            />
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>

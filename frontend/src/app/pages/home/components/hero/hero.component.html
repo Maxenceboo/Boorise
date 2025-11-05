@@ -1,15 +1,13 @@
 <section id="hero" class="relative py-16 overflow-visible">
-  <!-- Subtle radial background that can overflow left/right -->
   <svg
     id="hero-bg-svg"
-    class="absolute -left-24 -right-24 top-0 w-[140%] h-[110%] opacity-10 pointer-events-none"
+    class="absolute -left-24 -right-24 top-0 w-[140%] h-[110%] opacity-10 pointer-events-none dark:opacity-20"
     viewBox="0 0 100 100"
     preserveAspectRatio="none"
     xmlns="http://www.w3.org/2000/svg"
   >
     <defs>
       <radialGradient id="rgrad" cx="30%" cy="30%">
-        <!-- single color radial: both stops use the same hue but different opacities -->
         <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.18" />
         <stop offset="60%" stop-color="#7c3aed" stop-opacity="0.0" />
       </radialGradient>
@@ -17,13 +15,11 @@
     <rect x="0" y="0" width="100" height="100" fill="url(#rgrad)" />
   </svg>
 
-  <!-- Diagonal decorative block that intentionally overflows horizontally -->
   <div
     id="hero-diag"
-    class="absolute -left-[15%] top-6 w-[130%] h-[60%] -rotate-6 bg-gradient-to-r from-sky-700 via-indigo-700 to-violet-800 opacity-18 transform-gpu pointer-events-none"
+    class="absolute -left-[15%] top-6 w-[130%] h-[60%] -rotate-6 bg-gradient-to-r from-sky-700 via-indigo-700 to-violet-800 opacity-18 transform-gpu pointer-events-none dark:opacity-40"
   ></div>
 
-  <!-- More visible decorative 'cube' on the left to add depth -->
   <div
     id="hero-cube-left"
     class="absolute -left-12 top-20 w-28 h-28 rotate-12 bg-gradient-to-br from-indigo-600 to-sky-500 opacity-30 rounded-md pointer-events-none transform-gpu blur-sm"
@@ -34,78 +30,75 @@
     class="relative container mx-auto px-4 overflow-visible grid grid-cols-1 md:grid-cols-2 gap-8 items-center"
   >
     <div id="hero-copy" class="text-left z-10">
-      <h1 id="hero-title" class="text-4xl md:text-5xl font-extrabold leading-tight">
+      <h1 id="hero-title" class="text-4xl md:text-5xl font-extrabold leading-tight text-slate-900 dark:text-slate-100">
         Boorise — Votre ERP moderne, prêt à l'emploi
       </h1>
-      <p id="hero-sub" class="mt-4 text-slate-300 text-lg">
+      <p id="hero-sub" class="mt-4 text-lg text-slate-700 dark:text-slate-300">
         Centralisez vos opérations, automatisez les tâches répétitives et donnez à vos équipes un
         outil simple et puissant pour gérer la croissance.
       </p>
 
       <div id="hero-ctas" class="mt-6 flex flex-wrap gap-3">
-        <a
-          id="hero-demo"
-          class="inline-block bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-md text-sm shadow-md transform hover:-translate-y-0.5 transition"
-          href="#"
-          >Voir la démo</a
-        >
-        <a
-          id="hero-features"
-          class="inline-block border border-slate-700 text-slate-200 px-4 py-2 rounded-md text-sm"
-          href="#features"
+        <a id="hero-demo" class="btn btn--primary" href="#">Voir la démo</a>
+        <a id="hero-features" class="btn btn--secondary" href="#features"
           >Découvrir les fonctionnalités</a
         >
       </div>
 
       <ul
         id="hero-benefits"
-        class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-300"
+        class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-700 dark:text-slate-300"
       >
         <li id="benefit-1" class="flex items-start gap-2">
-          <span id="benefit-1-dot" class="w-2 h-2 mt-2 rounded-full bg-sky-500"></span
-          ><span id="benefit-1-txt">Mise en place rapide — templates métiers inclus</span>
+          <span id="benefit-1-dot" class="mt-2 h-2 w-2 rounded-full bg-sky-500"></span
+          ><span id="benefit-1-txt" class="dark:text-slate-200"
+            >Mise en place rapide — templates métiers inclus</span
+          >
         </li>
         <li id="benefit-2" class="flex items-start gap-2">
-          <span id="benefit-2-dot" class="w-2 h-2 mt-2 rounded-full bg-indigo-500"></span
-          ><span id="benefit-2-txt">Extensible — intégrations API et microservices</span>
+          <span id="benefit-2-dot" class="mt-2 h-2 w-2 rounded-full bg-indigo-500"></span
+          ><span id="benefit-2-txt" class="dark:text-slate-200"
+            >Extensible — intégrations API et microservices</span
+          >
         </li>
         <li id="benefit-3" class="flex items-start gap-2">
-          <span id="benefit-3-dot" class="w-2 h-2 mt-2 rounded-full bg-emerald-400"></span
-          ><span id="benefit-3-txt">Sécurité & conformité prêtes pour l'entreprise</span>
+          <span id="benefit-3-dot" class="mt-2 h-2 w-2 rounded-full bg-emerald-400"></span
+          ><span id="benefit-3-txt" class="dark:text-slate-200"
+            >Sécurité & conformité prêtes pour l'entreprise</span
+          >
         </li>
         <li id="benefit-4" class="flex items-start gap-2">
-          <span id="benefit-4-dot" class="w-2 h-2 mt-2 rounded-full bg-yellow-400"></span
-          ><span id="benefit-4-txt">Tableaux de bord clairs — décisions plus rapides</span>
+          <span id="benefit-4-dot" class="mt-2 h-2 w-2 rounded-full bg-yellow-400"></span
+          ><span id="benefit-4-txt" class="dark:text-slate-200"
+            >Tableaux de bord clairs — décisions plus rapides</span
+          >
         </li>
       </ul>
     </div>
 
     <div id="hero-visual" class="flex justify-center md:justify-end z-10">
-      <div id="hero-mock" class="w-full max-w-md transform hover:scale-105 transition duration-300">
-        <!-- simple device mockup (inline SVG) -->
+      <div
+        id="hero-mock"
+        class="relative w-full max-w-md transform rounded-[28px] bg-white/80 p-5 shadow-2xl shadow-emerald-500/10 transition duration-300 hover:scale-105 dark:bg-slate-900/70 dark:shadow-black/50"
+      >
         <svg
           id="hero-mock-svg"
           viewBox="0 0 600 400"
-          class="w-full rounded-xl shadow-lg"
+          class="w-full rounded-2xl shadow-2xl"
           xmlns="http://www.w3.org/2000/svg"
+          style="filter: drop-shadow(0 24px 48px rgba(14, 116, 144, 0.25))"
         >
           <defs>
-            <linearGradient id="g1" x1="0" x2="1">
-              <stop offset="0%" stop-color="#06b6d4" />
-              <stop offset="100%" stop-color="#6366f1" />
+            <linearGradient id="hero-mock-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#0f172a" />
+              <stop offset="100%" stop-color="#1e293b" />
+            </linearGradient>
+            <linearGradient id="hero-mock-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.2" />
+              <stop offset="50%" stop-color="#22c55e" stop-opacity="0.15" />
+              <stop offset="100%" stop-color="#818cf8" stop-opacity="0.2" />
             </linearGradient>
           </defs>
-          <rect id="mock-bg" x="0" y="0" width="600" height="400" rx="16" fill="#0f172a" />
-          <rect
-            id="mock-window"
-            x="28"
-            y="36"
-            width="544"
-            height="312"
-            rx="8"
-            fill="url(#g1)"
-            opacity="0.9"
-          />
           <g id="mock-cards" transform="translate(48,52)">
             <rect
               id="card-1"
@@ -113,9 +106,9 @@
               y="0"
               width="460"
               height="60"
-              rx="6"
-              fill="#ffffff"
-              opacity="0.06"
+              rx="8"
+              fill="url(#hero-mock-accent)"
+              opacity="0.6"
             />
             <rect
               id="card-2"
@@ -123,9 +116,9 @@
               y="76"
               width="340"
               height="44"
-              rx="6"
-              fill="#ffffff"
-              opacity="0.06"
+              rx="8"
+              fill="url(#hero-mock-accent)"
+              opacity="0.45"
             />
             <rect
               id="card-3"
@@ -133,12 +126,25 @@
               y="130"
               width="460"
               height="120"
-              rx="6"
-              fill="#ffffff"
-              opacity="0.06"
+              rx="8"
+              fill="url(#hero-mock-accent)"
+              opacity="0.45"
             />
           </g>
         </svg>
+        <div
+          class="absolute pointer-events-none"
+          style="left: 4.67%; top: 9%; width: 90.67%; height: 78%"
+        >
+          <div class="w-full h-full rounded-xl overflow-hidden shadow-inner">
+            <img
+              src="https://placehold.co/600x400/png?text=Mockup+Overlay&bg=0f172a"
+              alt="hero mock overlay"
+              class="w-full h-full object-cover pointer-events-none"
+              style="opacity: 0.50"
+            />
+          </div>
+        </div>
       </div>
     </div>
   </div>

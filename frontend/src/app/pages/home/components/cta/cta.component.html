@@ -2,34 +2,39 @@
   <!-- decorative accent allowed to overflow horizontally -->
   <div
     id="cta-decor"
-    class="absolute -right-[18%] top-0 w-96 h-96 rotate-6 bg-gradient-to-br from-emerald-700 to-sky-600 opacity-12 pointer-events-none"
+    class="absolute -right-[18%] top-0 w-96 h-96 rotate-6 opacity-12 pointer-events-none"
   ></div>
 
   <div
     id="cta-inner"
-    class="relative container mx-auto px-4 bg-gradient-to-r from-slate-900/60 to-slate-900/20 rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-4 overflow-visible"
+    class="relative container mx-auto px-4 rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-4 overflow-visible"
   >
     <div id="cta-copy" class="text-left">
       <h3 id="cta-title" class="text-xl font-bold">Prêt à essayer Boorise ?</h3>
-      <p id="cta-sub" class="mt-2 text-slate-300">
+      <p id="cta-sub" class="mt-2 text-slate-700">
         Lancez un environnement de test en quelques minutes et découvrez comment Boorise simplifie
         vos opérations.
       </p>
     </div>
 
-    <div id="cta-actions" class="w-full md:w-auto flex items-center gap-3">
+    <div id="cta-actions" class="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
       <input
+        pInputText
         id="cta-email"
         type="email"
         placeholder="Votre email"
-        class="px-3 py-2 rounded-md bg-slate-800 border border-slate-700 text-sm text-slate-200"
+        class="w-full sm:w-72"
+        autocomplete="email"
       />
       <button
+        pButton
         id="cta-button"
-        class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-md"
-      >
-        Demander une démo
-      </button>
+        type="button"
+        label="Demander une démo"
+        icon="pi pi-arrow-right"
+        iconPos="right"
+        class="btn btn--link"
+      ><i class="pi pi-arrow-right" style="font-size: 2rem"></i></button>
     </div>
   </div>
 </section>

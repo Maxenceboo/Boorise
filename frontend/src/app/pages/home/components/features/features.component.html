@@ -1,14 +1,12 @@
 <section id="features" class="relative py-16 overflow-visible">
-  <!-- diagonal accent that can overflow beyond the container -->
   <div
     id="features-diag"
-    class="absolute -right-[12%] top-6 w-96 h-96 rotate-12 bg-gradient-to-tr from-indigo-800 to-violet-700 opacity-12 pointer-events-none"
+    class="absolute -right-[12%] top-6 w-96 h-96 rotate-12 bg-gradient-to-tr from-indigo-800 to-violet-700 opacity-12 pointer-events-none dark:opacity-30"
   ></div>
 
-  <!-- subtle patterned background -->
   <svg
     id="features-bg"
-    class="absolute -left-24 -right-24 bottom-0 h-48 opacity-6 pointer-events-none"
+    class="absolute -left-24 -right-24 bottom-0 h-48 opacity-6 pointer-events-none dark:opacity-10"
     viewBox="0 0 100 30"
     preserveAspectRatio="none"
     xmlns="http://www.w3.org/2000/svg"
@@ -23,40 +21,113 @@
   </svg>
 
   <div id="features-inner" class="relative container mx-auto px-4 overflow-visible">
-    <h2 id="features-title" class="text-2xl font-bold">Fonctionnalités clés</h2>
-    <p id="features-sub" class="mt-2 text-slate-300">
+    <h2 id="features-title" class="text-2xl font-bold text-slate-900 dark:text-slate-100">Fonctionnalités clés</h2>
+    <p id="features-sub" class="mt-2 text-slate-700 dark:text-slate-300">
       Tout ce dont une PME a besoin pour piloter ses opérations.
     </p>
 
     <div id="features-grid" class="mt-8 grid gap-6 md:grid-cols-3">
-      <article
-        id="feature-1"
-        class="p-6 rounded-xl border border-slate-800 bg-slate-900/40 hover:translate-y-[-4px] transform transition"
-      >
-        <h3 id="feature-1-title" class="font-semibold">Gestion commerciale</h3>
-        <p id="feature-1-txt" class="text-sm opacity-80 mt-2">
-          Devis, commandes, facturation et suivi client centralisés.
-        </p>
+      <article id="feature-1" class="card flex items-center gap-4">
+        <div class="flex-shrink-0">
+          <div
+            class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-400/5 text-emerald-500 shadow-inner shadow-emerald-500/10 dark:from-emerald-500/25 dark:to-emerald-400/15 dark:text-emerald-300"
+            aria-hidden="true"
+          >
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M7 7h10M7 11h6"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M4 21V5a1 1 0 011-1h14a1 1 0 011 1v16l-3-2-3 2-3-2-3 2-3-2z"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+        <div>
+          <h3 id="feature-1-title" class="card-title">Gestion commerciale</h3>
+          <p id="feature-1-txt" class="card-body">
+            Devis, commandes, facturation et suivi client centralisés.
+          </p>
+        </div>
       </article>
 
-      <article
-        id="feature-2"
-        class="p-6 rounded-xl border border-slate-800 bg-slate-900/40 hover:translate-y-[-4px] transform transition"
-      >
-        <h3 id="feature-2-title" class="font-semibold">Stock & Achats</h3>
-        <p id="feature-2-txt" class="text-sm opacity-80 mt-2">
-          Mouvements, alertes de stock et intégration fournisseurs.
-        </p>
+      <article id="feature-2" class="card flex items-center gap-4">
+        <div class="flex-shrink-0">
+          <div
+            class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500/15 to-indigo-400/5 text-sky-500 shadow-inner shadow-sky-500/10 dark:from-sky-500/25 dark:to-indigo-500/15 dark:text-sky-300"
+            aria-hidden="true"
+          >
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M21 16V8l-9-4-9 4v8"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M3 8l9 4 9-4"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M12 12v8"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+        <div>
+          <h3 id="feature-2-title" class="card-title">Stock & Achats</h3>
+          <p id="feature-2-txt" class="card-body">
+            Mouvements, alertes de stock et intégration fournisseurs.
+          </p>
+        </div>
       </article>
 
-      <article
-        id="feature-3"
-        class="p-6 rounded-xl border border-slate-800 bg-slate-900/40 hover:translate-y-[-4px] transform transition"
-      >
-        <h3 id="feature-3-title" class="font-semibold">Reporting</h3>
-        <p id="feature-3-txt" class="text-sm opacity-80 mt-2">
-          Tableaux de bord personnalisés pour suivre vos KPIs.
-        </p>
+      <article id="feature-3" class="card flex items-center gap-4">
+        <div class="flex-shrink-0">
+          <div
+            class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-400/5 text-indigo-500 shadow-inner shadow-indigo-500/10 dark:from-indigo-500/25 dark:to-violet-500/15 dark:text-indigo-300"
+            aria-hidden="true"
+          >
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M3 3v18h18"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M7 14v-4M12 17v-7M17 11V9"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+        <div>
+          <h3 id="feature-3-title" class="card-title">Reporting</h3>
+          <p id="feature-3-txt" class="card-body">
+            Tableaux de bord personnalisés pour suivre vos KPIs.
+          </p>
+        </div>
       </article>
     </div>
   </div>

@@ -1,4 +1,46 @@
-<div id="home-page">
+<div id="home-page" class="relative">
+  <!-- Watermark: center + 4 corners (non-interactive) -->
+  <div class="pointer-events-auto fixed inset-0 z-50 overflow-visible" aria-hidden="true">
+    <!-- Subtle backdrop blur + tint to make watermark stand out -->
+    <div
+      class="absolute inset-0 pointer-events-auto backdrop-blur-[2px] bg-amber-50/6 dark:bg-black/6 mix-blend-normal"
+    ></div>
+    <!-- Top-left (moved closer to center) -->
+    <span
+      class="absolute top-[20%] left-[20%] inline-block whitespace-nowrap px-6 sm:px-8 md:px-10 min-w-[16rem] sm:min-w-[18rem] text-3xl sm:text-4xl md:text-5xl font-extrabold uppercase tracking-wider text-slate-900/40 dark:text-white/6 drop-shadow-md transform -rotate-12 select-none pointer-events-none"
+      aria-hidden="true"
+      >EN COURS DE PROD</span
+    >
+
+    <!-- Top-right (moved closer to center) -->
+    <span
+      class="absolute top-[20%] right-[20%] inline-block whitespace-nowrap px-6 sm:px-8 md:px-10 min-w-[16rem] sm:min-w-[18rem] text-3xl sm:text-4xl md:text-5xl font-extrabold uppercase tracking-wider text-slate-900/40 dark:text-white/6 drop-shadow-md transform -rotate-12 select-none pointer-events-none"
+      aria-hidden="true"
+      >EN COURS DE PROD</span
+    >
+
+    <!-- Center -->
+    <span
+      class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 inline-block whitespace-nowrap px-8 sm:px-10 md:px-12 min-w-[22rem] sm:min-w-[26rem] md:min-w-[30rem] text-4xl sm:text-5xl md:text-6xl font-extrabold uppercase tracking-wider text-slate-900/40 dark:text-white/6 drop-shadow-lg transform -rotate-12 select-none pointer-events-none"
+      aria-hidden="true"
+      >EN COURS DE PROD</span
+    >
+
+    <!-- Bottom-left (moved closer to center) -->
+    <span
+      class="absolute bottom-[20%] left-[20%] inline-block whitespace-nowrap px-6 sm:px-8 md:px-10 min-w-[16rem] sm:min-w-[18rem] text-3xl sm:text-4xl md:text-5xl font-extrabold uppercase tracking-wider text-slate-900/40 dark:text-white/6 drop-shadow-md transform -rotate-12 select-none pointer-events-none"
+      aria-hidden="true"
+      >EN COURS DE PROD</span
+    >
+
+    <!-- Bottom-right (moved closer to center) -->
+    <span
+      class="absolute bottom-[20%] right-[20%] inline-block whitespace-nowrap px-6 sm:px-8 md:px-10 min-w-[16rem] sm:min-w-[18rem] text-3xl sm:text-4xl md:text-5xl font-extrabold uppercase tracking-wider text-slate-900/40 dark:text-white/6 drop-shadow-md transform -rotate-12 select-none pointer-events-none"
+      aria-hidden="true"
+      >EN COURS DE PROD</span
+    >
+  </div>
+
   <home-hero id="home-hero"></home-hero>
   <home-features id="home-features"></home-features>
   <home-mockup id="home-mockup"></home-mockup>

@@ -11,6 +11,10 @@ frontend/dist/
 frontend/.vite/
 frontend/.vite-dev*.log
 
+# local dev logs
+*.log
+*.err.log
+
 # env
 .env
 .env.local

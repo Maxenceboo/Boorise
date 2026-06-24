@@ -22,7 +22,7 @@ export function OnboardingPage() {
     try {
       await createOrganization({ name });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Creation impossible");
+      setError(err instanceof Error ? err.message : "Création impossible");
     } finally {
       setPending(false);
     }
@@ -38,12 +38,12 @@ export function OnboardingPage() {
             type="button"
             onClick={() => void signOut()}
           >
-            Se deconnecter
+            Se déconnecter
           </button>
         </div>
         <h1 className="mt-5 text-2xl font-semibold">Configure ton entreprise</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Cette organisation servira a isoler les clients, materiaux, devis et factures.
+          Cette organisation servira à isoler les clients, matériaux, devis et factures.
         </p>
 
         <label className="mt-6 block space-y-1.5">
@@ -63,7 +63,7 @@ export function OnboardingPage() {
         ) : null}
 
         <Button className="mt-6 w-full" disabled={pending} type="submit">
-          {pending ? "Creation..." : "Creer mon espace"}
+          {pending ? "Création..." : "Créer mon espace"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>

@@ -20,7 +20,7 @@ export function AuthPage() {
     try {
       const result = await signIn("password", formData);
       if (!result.signingIn && !result.redirect) {
-        setError("La session n'a pas pu etre ouverte.");
+        setError("La session n'a pas pu être ouverte.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connexion impossible");
@@ -49,7 +49,7 @@ export function AuthPage() {
             Construis des devis fiables sans perdre le fil du chantier.
           </h1>
           <p className="mt-4 max-w-lg text-sm leading-6 text-[#d8d9ee]">
-            Clients, materiaux, calculs de pertes, PDF et signature dans un outil pense pour les
+            Clients, matériaux, calculs de pertes, PDF et signature dans un outil pensé pour les
             artisans.
           </p>
         </div>
@@ -57,12 +57,21 @@ export function AuthPage() {
 
       <section className="flex items-center justify-center px-5 py-10">
         <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-sm">
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-sm font-black text-white">
+              B
+            </div>
+            <div>
+              <div className="font-semibold">Boorise</div>
+              <div className="text-sm text-muted-foreground">Devis artisans</div>
+            </div>
+          </div>
           <div>
-            <h2 className="text-2xl font-semibold">{mode === "signIn" ? "Connexion" : "Creation du compte"}</h2>
+            <h2 className="text-2xl font-semibold">{mode === "signIn" ? "Connexion" : "Création du compte"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {mode === "signIn"
-                ? "Connecte-toi a ton espace Boorise."
-                : "Cree ton compte pour demarrer le MVP."}
+                ? "Connecte-toi à ton espace Boorise."
+                : "Crée ton compte pour démarrer le MVP."}
             </p>
           </div>
 
@@ -82,7 +91,7 @@ export function AuthPage() {
               <input
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
                 name="password"
-                placeholder="Minimum 8 caracteres"
+                placeholder="Minimum 8 caractères"
                 type="password"
                 required
               />
@@ -95,7 +104,7 @@ export function AuthPage() {
             ) : null}
 
             <Button className="w-full" disabled={pending} type="submit">
-              {pending ? "Patiente..." : mode === "signIn" ? "Se connecter" : "Creer le compte"}
+              {pending ? "Patiente..." : mode === "signIn" ? "Se connecter" : "Créer le compte"}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </form>
@@ -105,7 +114,7 @@ export function AuthPage() {
             type="button"
             onClick={() => setMode(mode === "signIn" ? "signUp" : "signIn")}
           >
-            {mode === "signIn" ? "Creer un compte" : "J'ai deja un compte"}
+            {mode === "signIn" ? "Créer un compte" : "J'ai déjà un compte"}
           </button>
         </div>
       </section>

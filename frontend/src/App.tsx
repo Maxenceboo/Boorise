@@ -8,7 +8,10 @@ import { routeTree } from "@/routeTree";
 
 const router = createRouter({ routeTree });
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
-const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
+if (!convexUrl) {
+  throw new Error("VITE_CONVEX_URL is required to start Boorise.");
+}
+const convex = new ConvexReactClient(convexUrl);
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -18,10 +21,6 @@ declare module "@tanstack/react-router" {
 
 export function App() {
   const app = <RouterProvider router={router} />;
-
-  if (!convex) {
-    return app;
-  }
 
   return (
     <ConvexAuthProvider client={convex}>

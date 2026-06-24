@@ -10,7 +10,8 @@
     "convex:ai-files": "convex ai-files install"
   },
   "devDependencies": {
-    "convex": "^1.31.0"
+    "convex": "^1.31.0",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@auth/core": "^0.41.1",

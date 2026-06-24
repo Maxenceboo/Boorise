@@ -2,41 +2,32 @@ name: CD
 
 on:
   push:
-    branches: [ main ]   # se déclenche quand une PR est mergée sur main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy (only on main)
+  verify-production-build:
+    name: Verify production build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
-      # ---- Rebuild Front ----
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install deps (front)
+
+      - name: Install deps
         run: npm ci
-        working-directory: frontend
-      - name: Build (front)
+
+      - name: Build
         run: npm run build
-        working-directory: frontend
 
-      # ---- Rebuild Back ----
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - name: Package (back)
-        run: mvn -B -ntp clean package -DskipTests
-        working-directory: backend
-
-      # ---- Deploy steps (à adapter) ----
       - name: Summary
         run: |
-          echo "🚀 Deploying Boorise from main"
-          ls -R frontend/dist || true
-          ls -R backend/target || true
+          echo "Vercel deploys Boorise automatically from main."
+          ls -R dist || true

@@ -1,0 +1,18 @@
+[2m15:18:21[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[CONVEX M(app:createOrganization)] [Request ID: 58b06edc53bd9ca1] Server Error
+Uncaught Error: Authentification requise
+
+[2m15:18:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[CONVEX M(app:createOrganization)] [Request ID: 9e41262643b4d772] Server Error
+Uncaught Error: Authentification requise
+
+[2m15:20:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[CONVEX M(app:createOrganization)] [Request ID: 3b4fa81330e2a36e] Server Error
+Uncaught Error: Authentification requise
+
+[2m15:22:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[CONVEX M(app:createOrganization)] [Request ID: 502bfb1ef3b0a93f] Server Error
+Uncaught Error: Authentification requise
+
+[2m15:22:54[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[CONVEX M(app:createOrganization)] [Request ID: 76c9625674aff757] Server Error
+Uncaught Error: Authentification requise
+
+[2m15:26:45[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[CONVEX M(app:createOrganization)] [Request ID: 925c1f6b45367aad] Server Error
+Uncaught Error: Utilisateur introuvable
+

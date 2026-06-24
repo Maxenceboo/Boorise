@@ -1,47 +1,67 @@
-# 🚀 Boorise – ERP SaaS par Bourrague
+# Boorise
 
-**Boorise** est un **ERP SaaS nouvelle génération** développé par la startup **Bourrague**.  
-Sa mission est de **simplifier la gestion des PME et TPE** grâce à une solution cloud moderne, modulaire et accessible.
+Boorise est un SaaS de devis, factures et gestion commerciale pour artisans et petites entreprises.
 
----
+## Stack
 
-## ✨ Fonctionnalités principales (MVP)
-- 📄 **Facturation & Devis** → création rapide, suivi des paiements, PDF pro.
-- 👥 **CRM simple** → fiches clients, historique, relances automatiques.
-- 📦 **Gestion des produits & stocks** → inventaire, alertes, suivi ventes.
+- Frontend : React + Vite + TypeScript.
+- UI : Tailwind CSS + composants shadcn/ui.
+- Routing : TanStack Router.
+- Backend et base de donnees : Convex.
+- Emails : Resend en V1.
+- Deploiement : Vercel pour le frontend, Convex Cloud pour le backend.
 
----
+## Structure
 
-## 🎯 Vision
-Un ERP pensé pour les petites structures :
-- 100% **cloud** (rien à installer).
-- **Modulaire** : chaque entreprise active seulement ce dont elle a besoin.
-- **Accessible** : tarifs adaptés aux freelances, artisans et PME.
+- `frontend/` : application web React.
+- `convex/` : schema et fonctions backend Convex.
+- `docs/` : documentation produit et technique.
 
----
+## Developpement
 
-## 🛠 Stack technique (prévisionnelle)
-- **Backend** : Node.js (NestJS) ou Java (Spring Boot)
-- **Frontend** : Angular + Tailwind CSS
-- **Base de données** : PostgreSQL
-- **Infra** : Docker / Kubernetes (hébergement cloud)
-- **Extra** : Stripe (paiement), API bancaire (Plaid/Budget Insight)
+Installer et lancer le frontend :
 
----
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## 📚 Documentation
-Retrouvez la documentation complète dans le dossier [`docs/`](./docs).
+Lancer Convex depuis la racine du repo :
+
+```bash
+npm run convex:dev
+```
+
+## Build
+
+```bash
+cd frontend
+npm run build
+```
+
+## Deploiement
+
+Vercel doit etre connecte au depot GitHub et deployer automatiquement depuis `main`.
+
+Configuration Vercel :
+
+- Framework : Vite.
+- Build command : `cd frontend && npm ci && npm run build`.
+- Output directory : `frontend/dist`.
+- Variable : `VITE_CONVEX_URL`.
+
+Convex se deploie avec :
+
+```bash
+npm run convex:deploy
+```
+
+## Documentation
+
 - [00-introduction.md](./docs/00-introduction.md)
 - [01-description.md](./docs/01-description.md)
+- [05-architecture-technique.md](./docs/05-architecture-technique.md)
 - [08-roadmap.md](./docs/08-roadmap.md)
-
----
-
-## 🏷️ Licence
-*(à définir : MIT, Apache 2.0, propriétaire…)*
-
----
-
-## 💡 Contributeurs
-Projet initié par **Bourrague**.  
-Toute contribution est la bienvenue (issues, pull requests).
+- [11-reprise-saas-artisans.md](./docs/11-reprise-saas-artisans.md)
+- [12-convex-docs-actuelles.md](./docs/12-convex-docs-actuelles.md)

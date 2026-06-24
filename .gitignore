@@ -4,14 +4,18 @@
 
 # dependencies
 /node_modules
+frontend/node_modules/
 
-# Java/Maven
-backend/target/
-backend/.mvn/
-*.iml
-.classpath
-.project
-.settings/
+# builds
+frontend/dist/
+frontend/.vite/
+frontend/.vite-dev*.log
+
+# env
+.env
+.env.local
+frontend/.env
+frontend/.env.local
 
 # OS
 .DS_Store

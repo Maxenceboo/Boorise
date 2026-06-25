@@ -1,69 +1,63 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation } from "convex/react";
-import { ArrowRight } from "lucide-react";
+import type { FormEvent } from "react";
 import { useState } from "react";
+import { ArrowRight, LogOut } from "lucide-react";
 import { api } from "#convex/_generated/api";
-import { Button } from "@/components/ui/button";
+import { Button, Field, Notice, TextInput } from "@/components/ui/app";
 
 export function OnboardingPage() {
   const { signOut } = useAuthActions();
   const createOrganization = useMutation(api.app.createOrganization);
-  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setPending(true);
-
-    const formData = new FormData(event.currentTarget);
-    const name = String(formData.get("name") ?? "").trim();
+    setError(null);
+    const data = new FormData(event.currentTarget);
 
     try {
-      await createOrganization({ name });
+      await createOrganization({ name: String(data.get("name") ?? "") });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Création impossible");
+      setError(err instanceof Error ? err.message : "Creation impossible");
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background px-5">
-      <form className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-sm" onSubmit={handleSubmit}>
+    <main className="onboarding-screen">
+      <form className="onboarding-card" onSubmit={handleSubmit}>
         <div className="flex items-start justify-between gap-4">
-          <div className="grid h-12 w-12 place-items-center rounded-md bg-primary font-black text-white">B</div>
-          <button
-            className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-secondary hover:underline"
-            type="button"
-            onClick={() => void signOut()}
-          >
-            Se déconnecter
-          </button>
-        </div>
-        <h1 className="mt-5 text-2xl font-semibold">Configure ton entreprise</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Cette organisation servira à isoler les clients, matériaux, devis et factures.
-        </p>
-
-        <label className="mt-6 block space-y-1.5">
-          <span className="text-sm font-medium">Nom commercial</span>
-          <input
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-            name="name"
-            placeholder="Atelier Bourrague"
-            required
-          />
-        </label>
-
-        {error ? (
-          <div className="mt-4 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
+          <div className="brand-row px-0">
+            <div className="brand-mark">B</div>
+            <div>
+              <div className="text-sm font-bold text-slate-950">Boorise</div>
+              <div className="text-xs text-slate-500">Initialisation</div>
+            </div>
           </div>
-        ) : null}
+          <Button type="button" variant="ghost" onClick={() => void signOut()}>
+            <LogOut className="h-4 w-4" />
+            Sortir
+          </Button>
+        </div>
+
+        <div className="mt-8">
+          <div className="eyebrow">Entreprise</div>
+          <h1>Configure ton espace de travail</h1>
+          <p>Cette entreprise isolera tes clients, materiaux, devis et factures.</p>
+        </div>
+
+        <Field className="mt-6" label="Nom de l'entreprise">
+          <TextInput name="name" placeholder="Atelier Martin" required />
+        </Field>
+
+        {error ? <Notice kind="error">{error}</Notice> : null}
 
         <Button className="mt-6 w-full" disabled={pending} type="submit">
-          {pending ? "Création..." : "Créer mon espace"}
+          {pending ? "Creation..." : "Creer mon espace"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>

@@ -1,10 +1,5 @@
-import { createRootRoute, createRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, lazyRouteComponent, Outlet, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
-import { ClientsPage } from "@/routes/ClientsPage";
-import { DashboardPage } from "@/routes/DashboardPage";
-import { MaterialsPage } from "@/routes/MaterialsPage";
-import { QuotesPage } from "@/routes/QuotesPage";
-import { SettingsPage } from "@/routes/SettingsPage";
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -27,34 +22,46 @@ const indexRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/dashboard",
-  component: DashboardPage,
+  component: lazyRouteComponent(() => import("@/routes/DashboardPage"), "DashboardPage"),
 });
 
 const clientsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/clients",
-  component: ClientsPage,
+  component: lazyRouteComponent(() => import("@/routes/ClientsPage"), "ClientsPage"),
 });
 
 const materialsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/materiaux",
-  component: MaterialsPage,
+  component: lazyRouteComponent(() => import("@/routes/MaterialsPage"), "MaterialsPage"),
+});
+
+const servicesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/prestations",
+  component: lazyRouteComponent(() => import("@/routes/ServicesPage"), "ServicesPage"),
 });
 
 const quotesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/devis",
-  component: QuotesPage,
+  component: lazyRouteComponent(() => import("@/routes/QuotesPage"), "QuotesPage"),
+});
+
+const invoicesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/factures",
+  component: lazyRouteComponent(() => import("@/routes/InvoicesPage"), "InvoicesPage"),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/parametres",
-  component: SettingsPage,
+  component: lazyRouteComponent(() => import("@/routes/SettingsPage"), "SettingsPage"),
 });
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  appRoute.addChildren([dashboardRoute, clientsRoute, materialsRoute, quotesRoute, settingsRoute]),
+  appRoute.addChildren([dashboardRoute, clientsRoute, materialsRoute, servicesRoute, quotesRoute, invoicesRoute, settingsRoute]),
 ]);

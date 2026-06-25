@@ -12,8 +12,11 @@ import type * as app from "../app.js";
 import type * as auth from "../auth.js";
 import type * as clients from "../clients.js";
 import type * as http from "../http.js";
+import type * as invoices from "../invoices.js";
 import type * as materialCalculation from "../materialCalculation.js";
+import type * as materials from "../materials.js";
 import type * as quotes from "../quotes.js";
+import type * as services from "../services.js";
 
 import type {
   ApiFromModules,
@@ -26,8 +29,11 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   clients: typeof clients;
   http: typeof http;
+  invoices: typeof invoices;
   materialCalculation: typeof materialCalculation;
+  materials: typeof materials;
   quotes: typeof quotes;
+  services: typeof services;
 }>;
 
 /**

@@ -1,73 +1,79 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
 import {
   Boxes,
+  BriefcaseBusiness,
   Building2,
+  FileCheck2,
   FileText,
-  Menu,
   LayoutDashboard,
-  Search,
-  Settings,
+  LogOut,
+  Menu,
+  Plus,
   UsersRound,
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { api } from "#convex/_generated/api";
+import { Button, IconButton } from "@/components/ui/app";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-  { to: "/clients", label: "Clients", icon: UsersRound },
-  { to: "/materiaux", label: "Matériaux", icon: Boxes },
-  { to: "/devis", label: "Devis", icon: FileText },
-  { to: "/parametres", label: "Entreprise", icon: Building2 },
+  { to: "/dashboard", label: "Dashboard", description: "Vue generale", icon: LayoutDashboard },
+  { to: "/clients", label: "Clients", description: "CRM simple", icon: UsersRound },
+  { to: "/materiaux", label: "Materiaux", description: "Catalogue achats", icon: Boxes },
+  { to: "/prestations", label: "Prestations", description: "Main-d'oeuvre", icon: BriefcaseBusiness },
+  { to: "/devis", label: "Devis", description: "Chiffrage chantier", icon: FileText },
+  { to: "/factures", label: "Factures", description: "Suivi paiement", icon: FileCheck2 },
+  { to: "/parametres", label: "Entreprise", description: "Profil et defauts", icon: Building2 },
 ];
 
 export function AppShell() {
   const { signOut } = useAuthActions();
+  const navigate = useNavigate();
+  const current = useQuery(api.app.current);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const active = navigation.find((item) => item.to === pathname) ?? navigation[0];
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Sidebar className="hidden lg:block" pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+    <div className="app-shell">
+      <Sidebar className="hidden lg:flex" pathname={pathname} onNavigate={() => setMobileOpen(false)} />
 
       {mobileOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <button
-            aria-label="Fermer le menu"
-            className="absolute inset-0 bg-[#241629]/55"
-            type="button"
-            onClick={() => setMobileOpen(false)}
-          />
-          <Sidebar className="relative z-10 h-full w-72" pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+        <div className="mobile-nav">
+          <button className="mobile-nav-scrim" aria-label="Fermer le menu" onClick={() => setMobileOpen(false)} />
+          <Sidebar className="relative z-10 flex h-full w-80" pathname={pathname} onNavigate={() => setMobileOpen(false)} />
         </div>
       ) : null}
 
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-card/90 px-4 backdrop-blur lg:px-8">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              className="lg:hidden"
-              aria-label="Ouvrir le menu"
-              onClick={() => setMobileOpen(true)}
-            >
+      <div className="app-main">
+        <header className="topbar">
+          <div className="flex min-w-0 items-center gap-3">
+            <IconButton className="lg:hidden" label="Ouvrir le menu" onClick={() => setMobileOpen(true)}>
               <Menu className="h-4 w-4" />
-            </Button>
-            <div>
-              <div className="text-sm font-semibold">Espace entreprise</div>
-              <div className="text-xs text-muted-foreground">Clients, devis et suivi chantier</div>
+            </IconButton>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-slate-950">{active.label}</div>
+              <div className="truncate text-xs text-slate-500">{current?.organization?.name ?? active.description}</div>
             </div>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => void signOut()}>
-            <Settings className="h-4 w-4" />
-            Déconnexion
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button className="hidden md:inline-flex" size="sm" onClick={() => void navigate({ to: "/devis" })}>
+              <Plus className="h-4 w-4" />
+              Nouveau devis
+            </Button>
+            <Button className="hidden md:inline-flex" variant="outline" onClick={() => void signOut()}>
+              <LogOut className="h-4 w-4" />
+              Deconnexion
+            </Button>
+            <IconButton className="md:hidden" label="Deconnexion" onClick={() => void signOut()}>
+              <LogOut className="h-4 w-4" />
+            </IconButton>
+          </div>
         </header>
-
-        <main className="mx-auto w-full max-w-7xl px-4 py-5 lg:px-8 lg:py-7">
+        <main className="content">
           <Outlet />
         </main>
       </div>
@@ -84,63 +90,56 @@ function Sidebar({
   pathname: string;
   onNavigate: () => void;
 }) {
+  const primaryNavigation = navigation.filter((item) => item.to !== "/parametres");
+  const secondaryNavigation = navigation.filter((item) => item.to === "/parametres");
+
   return (
-    <aside className={cn("fixed inset-y-0 left-0 w-72 bg-violet-surface text-white", className)}>
-      <div className="flex h-16 items-center justify-between border-b border-white/10 px-5">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-sm font-black text-primary-foreground shadow-lg shadow-orange-950/20">
-            B
-          </div>
-          <div>
-            <div className="text-base font-semibold">Boorise</div>
-            <div className="text-xs text-violet-200">Devis artisans</div>
-          </div>
+    <aside className={cn("sidebar", className)}>
+      <div className="brand-row">
+        <div className="brand-mark">B</div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-slate-950">Boorise</div>
+          <div className="truncate text-xs text-slate-500">ERP artisans</div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-white hover:bg-white/10 lg:hidden"
-          aria-label="Fermer le menu"
-          onClick={onNavigate}
-        >
+        <IconButton className="ml-auto lg:hidden" label="Fermer le menu" onClick={onNavigate}>
           <X className="h-4 w-4" />
-        </Button>
+        </IconButton>
       </div>
 
-      <div className="px-4 py-4">
-        <div className="flex h-10 items-center gap-2 rounded-md border border-white/10 bg-white/8 px-3 text-sm text-violet-100">
-          <Search className="h-4 w-4" />
-          Rechercher
-        </div>
-      </div>
-
-      <nav className="space-y-1 px-3">
-        {navigation.map((item) => {
-          const Icon = item.icon;
-          const active = pathname === item.to;
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={onNavigate}
-              className={cn(
-                "flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-violet-100 transition-colors hover:bg-white/10 hover:text-white",
-                active && "bg-primary text-white shadow-sm shadow-orange-950/20",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="nav-list">
+        <p className="nav-section-label">Pilotage</p>
+        {primaryNavigation.map((item) => (
+          <NavItem key={item.to} item={item} pathname={pathname} onNavigate={onNavigate} />
+        ))}
+        <p className="nav-section-label mt-5">Reglages</p>
+        {secondaryNavigation.map((item) => (
+          <NavItem key={item.to} item={item} pathname={pathname} onNavigate={onNavigate} />
+        ))}
       </nav>
 
-      <div className="absolute bottom-4 left-3 right-3 rounded-lg border border-white/10 bg-violet-panel p-4">
-        <div className="text-sm font-semibold">MVP en cours</div>
-        <p className="mt-1 text-xs leading-5 text-[#d8d9ee]">
-          Priorité aux clients, devis propres, calculs fiables et documents PDF.
-        </p>
+      <div className="sidebar-note">
+        <strong>Calcul matiere</strong>
+        <p>Les pertes, lots et couts reels sont calcules dans chaque devis.</p>
       </div>
     </aside>
+  );
+}
+
+function NavItem({
+  item,
+  pathname,
+  onNavigate,
+}: {
+  item: (typeof navigation)[number];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const Icon = item.icon;
+  const isActive = pathname === item.to;
+  return (
+    <Link key={item.to} to={item.to} onClick={onNavigate} className={cn("nav-link", isActive && "nav-link-active")}>
+      <Icon className="nav-icon h-[18px] w-[18px]" />
+      <span className="nav-label truncate">{item.label}</span>
+    </Link>
   );
 }

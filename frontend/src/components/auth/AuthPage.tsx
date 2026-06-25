@@ -1,123 +1,135 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { ArrowRight } from "lucide-react";
+import type { FormEvent } from "react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, CheckCircle2, LockKeyhole, Mail } from "lucide-react";
+import { Button, Field, Notice, TextInput } from "@/components/ui/app";
+
+type AuthMode = "signIn" | "signUp" | "reset";
 
 export function AuthPage() {
   const { signIn } = useAuthActions();
-  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
-  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<AuthMode>("signIn");
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     setPending(true);
+    setError(null);
+    setNotice(null);
 
     const formData = new FormData(event.currentTarget);
     formData.set("flow", mode);
 
     try {
       const result = await signIn("password", formData);
-      if (!result.signingIn && !result.redirect) {
-        setError("La session n'a pas pu être ouverte.");
+      if (mode === "reset") {
+        setNotice("Si la configuration email Convex Auth est active, un email de reinitialisation sera envoye.");
+      } else if (!result.signingIn && !result.redirect) {
+        setError("La session n'a pas pu etre ouverte.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connexion impossible");
+      setError(err instanceof Error ? err.message : "Action impossible");
     } finally {
       setPending(false);
     }
   }
 
+  const title = mode === "signIn" ? "Connexion" : mode === "signUp" ? "Inscription" : "Reinitialisation";
+  const cta = mode === "signIn" ? "Se connecter" : mode === "signUp" ? "Creer mon compte" : "Recevoir le lien";
+
   return (
-    <main className="grid min-h-screen bg-background lg:grid-cols-[1.05fr_0.95fr]">
-      <section className="hidden bg-secondary p-10 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-md bg-primary text-sm font-black">B</div>
+    <main className="auth-screen">
+      <section className="auth-visual">
+        <div className="brand-row px-0">
+          <div className="brand-mark bg-white text-slate-950">B</div>
           <div>
-            <div className="font-semibold">Boorise</div>
-            <div className="text-sm text-[#d8d9ee]">Devis artisans</div>
+            <div className="text-sm font-bold text-white">Boorise</div>
+            <div className="text-xs text-slate-300">ERP artisans</div>
           </div>
         </div>
         <div>
-          <div className="mb-6 grid grid-cols-5 overflow-hidden rounded-lg">
-            {["#F2C230", "#F2921D", "#F24F13", "#8082A6", "#46334F"].map((color) => (
-              <div key={color} className="h-28" style={{ backgroundColor: color }} />
-            ))}
-          </div>
-          <h1 className="max-w-xl text-4xl font-semibold leading-tight">
-            Construis des devis fiables sans perdre le fil du chantier.
-          </h1>
-          <p className="mt-4 max-w-lg text-sm leading-6 text-[#d8d9ee]">
-            Clients, matériaux, calculs de pertes, PDF et signature dans un outil pensé pour les
-            artisans.
+          <div className="eyebrow border-white/15 bg-white/10 text-cyan-100">Chiffrage fiable</div>
+          <h1>Gerer clients, materiaux et devis sans friction.</h1>
+          <p>
+            Une interface simple pour preparer les chantiers, calculer les achats reels et suivre les documents de vente.
           </p>
+        </div>
+        <div className="auth-proof">
+          <Proof label="Calcul pertes" value="Auto" />
+          <Proof label="Lots" value="Arrondis" />
+          <Proof label="Suivi" value="Temps reel" />
         </div>
       </section>
 
-      <section className="flex items-center justify-center px-5 py-10">
-        <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-sm">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-sm font-black text-white">
-              B
-            </div>
-            <div>
-              <div className="font-semibold">Boorise</div>
-              <div className="text-sm text-muted-foreground">Devis artisans</div>
+      <section className="auth-panel">
+        <div className="auth-card">
+          <div className="lg:hidden">
+            <div className="brand-row px-0 pb-6">
+              <div className="brand-mark">B</div>
+              <div>
+                <div className="text-sm font-bold text-slate-950">Boorise</div>
+                <div className="text-xs text-slate-500">ERP artisans</div>
+              </div>
             </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-semibold">{mode === "signIn" ? "Connexion" : "Création du compte"}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {mode === "signIn"
-                ? "Connecte-toi à ton espace Boorise."
-                : "Crée ton compte pour démarrer le MVP."}
-            </p>
-          </div>
+
+          <div className="eyebrow">Acces securise</div>
+          <h2>{title}</h2>
+          <p>
+            {mode === "signIn"
+              ? "Connecte-toi a ton espace de gestion."
+              : mode === "signUp"
+                ? "Cree ton compte et configure ton entreprise."
+                : "Renseigne ton email pour lancer la procedure."}
+          </p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Email</span>
-              <input
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                name="email"
-                placeholder="toi@entreprise.fr"
-                type="email"
-                required
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Mot de passe</span>
-              <input
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                name="password"
-                placeholder="Minimum 8 caractères"
-                type="password"
-                required
-              />
-            </label>
-
-            {error ? (
-              <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
+            <Field label="Email">
+              <div className="input-with-icon">
+                <Mail className="h-4 w-4" />
+                <TextInput name="email" type="email" placeholder="toi@entreprise.fr" required />
               </div>
+            </Field>
+            {mode !== "reset" ? (
+              <Field label="Mot de passe">
+                <div className="input-with-icon">
+                  <LockKeyhole className="h-4 w-4" />
+                  <TextInput name="password" type="password" placeholder="Minimum 8 caracteres" required />
+                </div>
+              </Field>
             ) : null}
 
+            {error ? <Notice kind="error">{error}</Notice> : null}
+            {notice ? <Notice kind="success">{notice}</Notice> : null}
+
             <Button className="w-full" disabled={pending} type="submit">
-              {pending ? "Patiente..." : mode === "signIn" ? "Se connecter" : "Créer le compte"}
+              {pending ? "Patiente..." : cta}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </form>
 
-          <button
-            className="mt-4 text-sm font-medium text-secondary underline-offset-4 hover:underline"
-            type="button"
-            onClick={() => setMode(mode === "signIn" ? "signUp" : "signIn")}
-          >
-            {mode === "signIn" ? "Créer un compte" : "J'ai déjà un compte"}
-          </button>
+          <div className="auth-links">
+            <button type="button" onClick={() => setMode(mode === "signIn" ? "signUp" : "signIn")}>
+              {mode === "signIn" ? "Creer un compte" : "J'ai deja un compte"}
+            </button>
+            <button type="button" onClick={() => setMode("reset")}>
+              Mot de passe oublie
+            </button>
+          </div>
         </div>
       </section>
     </main>
+  );
+}
+
+function Proof({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <CheckCircle2 className="mb-3 h-4 w-4 text-cyan-200" />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, CheckCircle2, Chrome, LockKeyhole, Mail } from "lucide-react";
 import { Button, Field, Notice, TextInput } from "@/components/ui/app";
 
 type AuthMode = "signIn" | "signUp" | "reset";
@@ -10,8 +10,25 @@ export function AuthPage() {
   const { signIn } = useAuthActions();
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [pending, setPending] = useState(false);
+  const [oauthPending, setOauthPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  async function handleGoogleSignIn() {
+    setOauthPending(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await signIn("google", { redirectTo: "/" });
+      if (!result.redirect && !result.signingIn) {
+        setError("La redirection Google n'a pas pu etre lancee.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connexion Google impossible");
+      setOauthPending(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -85,7 +102,22 @@ export function AuthPage() {
                 : "Renseigne ton email pour lancer la procedure."}
           </p>
 
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+          <Button
+            className="auth-oauth-button mt-6 w-full"
+            disabled={oauthPending || pending}
+            type="button"
+            variant="outline"
+            onClick={() => void handleGoogleSignIn()}
+          >
+            <Chrome className="h-4 w-4" />
+            {oauthPending ? "Redirection Google..." : "Continuer avec Google"}
+          </Button>
+
+          <div className="auth-divider" role="separator">
+            <span>ou</span>
+          </div>
+
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <Field label="Email" required>
               <div className="input-with-icon">
                 <Mail className="h-4 w-4" />
@@ -104,7 +136,7 @@ export function AuthPage() {
             {error ? <Notice kind="error">{error}</Notice> : null}
             {notice ? <Notice kind="success">{notice}</Notice> : null}
 
-            <Button className="w-full" disabled={pending} type="submit">
+            <Button className="w-full" disabled={pending || oauthPending} type="submit">
               {pending ? "Patiente..." : cta}
               <ArrowRight className="h-4 w-4" />
             </Button>

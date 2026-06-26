@@ -33,6 +33,39 @@ Lancer Convex depuis la racine du repo :
 npm run convex:dev
 ```
 
+## Authentification OAuth
+
+L'application conserve l'email/mot de passe et ajoute Google OAuth via Convex Auth.
+
+En dev local, le frontend Vite pointe vers le backend Convex local :
+
+```env
+VITE_CONVEX_URL=http://127.0.0.1:3210
+```
+
+Variables Convex locales a configurer :
+
+```bash
+npx convex env set SITE_URL http://localhost:5173
+npx convex env set AUTH_GOOGLE_ID your-google-client-id
+npx convex env set AUTH_GOOGLE_SECRET your-google-client-secret
+```
+
+Dans Google Cloud Console, ajouter l'URI de redirection autorisee :
+
+```text
+http://127.0.0.1:3211/api/auth/callback/google
+```
+
+Ajouter aussi les origins autorisees :
+
+```text
+http://localhost:5173
+http://127.0.0.1:5173
+```
+
+En production, `SITE_URL` doit pointer vers le domaine frontend public, par exemple `https://boorise.fr`, et l'URI de redirection devient `https://your-deployment.convex.site/api/auth/callback/google`.
+
 ## Build
 
 ```bash

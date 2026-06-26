@@ -67,7 +67,13 @@ const settingsRoute = createRoute({
   component: lazyRouteComponent(() => import("@/routes/SettingsPage"), "SettingsPage"),
 });
 
+const teamRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/equipe",
+  component: lazyRouteComponent(() => import("@/routes/TeamPage"), "TeamPage"),
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  appRoute.addChildren([dashboardRoute, statsRoute, clientsRoute, materialsRoute, servicesRoute, quotesRoute, invoicesRoute, settingsRoute]),
+  appRoute.addChildren([dashboardRoute, statsRoute, clientsRoute, materialsRoute, servicesRoute, quotesRoute, invoicesRoute, settingsRoute, teamRoute]),
 ]);

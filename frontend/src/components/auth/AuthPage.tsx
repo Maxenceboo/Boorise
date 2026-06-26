@@ -1,19 +1,23 @@
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useAction } from "convex/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Chrome, LockKeyhole, Mail } from "lucide-react";
 import { Button, Field, Notice, TextInput } from "@/components/ui/app";
+import { api } from "#convex/_generated/api";
 
 type AuthMode = "signIn" | "signUp" | "reset" | "resetVerify";
 
 export function AuthPage() {
   const { signIn } = useAuthActions();
+  const requestPasswordReset = useAction(api.app.requestPasswordReset);
   const [mode, setMode] = useState<AuthMode>(getInitialAuthMode);
   const [pending, setPending] = useState(false);
   const [oauthPending, setOauthPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const resetCode = getResetCode();
+  const resetEmail = getStoredResetEmail();
 
   async function handleGoogleSignIn() {
     setOauthPending(true);
@@ -21,7 +25,7 @@ export function AuthPage() {
     setNotice(null);
 
     try {
-      const result = await signIn("google", { redirectTo: "/" });
+      const result = await signIn("google", { redirectTo: getPostAuthRedirect() });
       if (!result.redirect && !result.signingIn) {
         setError("La redirection Google n'a pas pu etre lancee.");
       }
@@ -39,8 +43,17 @@ export function AuthPage() {
 
     const formData = new FormData(event.currentTarget);
     if (mode === "reset") {
-      formData.set("flow", "reset");
-      formData.set("redirectTo", "/?flow=reset");
+      const email = String(formData.get("email") ?? "");
+      storeResetEmail(email);
+      try {
+        await requestPasswordReset({ email });
+      } catch {
+        // Keep the same public response to avoid exposing whether the address exists.
+      } finally {
+        setNotice("Si un compte existe avec cet email, les instructions viennent d'etre envoyees.");
+        setPending(false);
+      }
+      return;
     } else if (mode === "resetVerify") {
       formData.set("flow", "reset-verification");
       if (resetCode) {
@@ -52,21 +65,18 @@ export function AuthPage() {
 
     try {
       const result = await signIn("password", formData);
-      if (mode === "reset") {
-        setNotice("Si un compte existe avec cet email, un lien de reinitialisation vient d'etre envoye.");
-      } else if (mode === "resetVerify") {
+      if (mode === "resetVerify") {
         if (!result.signingIn) {
           setError("Le mot de passe n'a pas pu etre mis a jour. Verifie le code ou redemande un lien.");
+        } else {
+          clearResetEmail();
+          setNotice("Mot de passe mis a jour. Connexion en cours...");
         }
       } else if (!result.signingIn && !result.redirect) {
         setError("La session n'a pas pu etre ouverte.");
       }
     } catch (err) {
-      if (mode === "reset") {
-        setNotice("Si un compte existe avec cet email, un lien de reinitialisation vient d'etre envoye.");
-      } else {
-        setError(err instanceof Error ? err.message : "Action impossible");
-      }
+      setError(err instanceof Error ? err.message : "Action impossible");
     } finally {
       setPending(false);
     }
@@ -137,7 +147,7 @@ export function AuthPage() {
                   : "Renseigne ton email pour recevoir un lien securise."}
           </p>
 
-          {mode !== "resetVerify" ? (
+          {mode === "signIn" || mode === "signUp" ? (
             <>
               <Button
                 className="auth-oauth-button mt-6 w-full"
@@ -160,7 +170,7 @@ export function AuthPage() {
             <Field label="Email" required>
               <div className="input-with-icon">
                 <Mail className="h-4 w-4" />
-                <TextInput name="email" type="email" placeholder="toi@entreprise.fr" required />
+                <TextInput name="email" type="email" placeholder="toi@entreprise.fr" defaultValue={mode === "resetVerify" ? resetEmail : undefined} required />
               </div>
             </Field>
             {mode === "resetVerify" && !resetCode ? (
@@ -199,7 +209,11 @@ export function AuthPage() {
               <button type="button" onClick={() => setMode("reset")}>
                 Mot de passe oublie
               </button>
-            ) : null}
+            ) : (
+              <button type="button" onClick={() => switchToResetRequest(setMode, setError, setNotice)}>
+                Redemander un lien
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -220,6 +234,52 @@ function getResetCode() {
     return null;
   }
   return new URLSearchParams(window.location.search).get("code");
+}
+
+function getStoredResetEmail() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.sessionStorage.getItem("boorise-reset-email") ?? "";
+}
+
+function storeResetEmail(email: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const normalized = email.trim().toLowerCase();
+  if (normalized) {
+    window.sessionStorage.setItem("boorise-reset-email", normalized);
+  }
+}
+
+function clearResetEmail() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem("boorise-reset-email");
+}
+
+function switchToResetRequest(
+  setMode: (mode: AuthMode) => void,
+  setError: (message: string | null) => void,
+  setNotice: (message: string | null) => void,
+) {
+  if (typeof window !== "undefined") {
+    window.history.replaceState({}, "", "/");
+  }
+  setError(null);
+  setNotice(null);
+  setMode("reset");
+}
+
+function getPostAuthRedirect() {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+  const params = new URLSearchParams(window.location.search);
+  const invite = params.get("invite");
+  return invite ? `/?invite=${encodeURIComponent(invite)}` : "/";
 }
 
 function Proof({ label, value }: { label: string; value: string }) {

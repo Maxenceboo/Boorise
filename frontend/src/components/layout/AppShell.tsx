@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ShieldCheck,
   UsersRound,
   X,
 } from "lucide-react";
@@ -58,6 +59,7 @@ const navSections: NavSectionConfig[] = [
     label: "Administration",
     items: [
       { to: "/parametres", label: "Entreprise", description: "Profil et defauts", icon: Building2 },
+      { to: "/equipe", label: "Equipe", description: "Membres et invitations", icon: ShieldCheck },
     ],
   },
 ] ;

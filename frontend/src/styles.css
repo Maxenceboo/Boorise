@@ -1028,6 +1028,13 @@ a {
   font-weight: 650;
 }
 
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .field {
   display: grid;
   gap: 0.38rem;

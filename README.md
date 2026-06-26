@@ -50,7 +50,8 @@ npx convex env set SITE_URL http://localhost:5173
 npx convex env set AUTH_GOOGLE_ID your-google-client-id
 npx convex env set AUTH_GOOGLE_SECRET your-google-client-secret
 npx convex env set RESEND_API_KEY re_xxxxxxxxx
-npx convex env set AUTH_EMAIL_FROM "Boorise <onboarding@resend.dev>"
+npx convex env set AUTH_EMAIL_FROM "Boorise Securite <security@boorise.fr>"
+npx convex env set INVITATION_EMAIL_FROM "Boorise Equipe <equipe@boorise.fr>"
 ```
 
 Dans Google Cloud Console, ajouter l'URI de redirection autorisee :
@@ -68,7 +69,9 @@ http://127.0.0.1:5173
 
 En production, `SITE_URL` doit pointer vers le domaine frontend public, par exemple `https://boorise.fr`, et l'URI de redirection devient `https://your-deployment.convex.site/api/auth/callback/google`.
 
-Pour les emails de reinitialisation de mot de passe, `AUTH_EMAIL_FROM` doit utiliser un domaine verifie chez Resend en production, par exemple `Boorise <security@boorise.fr>`.
+Pour les emails de reinitialisation de mot de passe, `AUTH_EMAIL_FROM` doit utiliser une adresse securite sur un domaine verifie chez Resend, par exemple `Boorise Securite <security@boorise.fr>`.
+
+Pour les invitations collaborateurs, `INVITATION_EMAIL_FROM` doit utiliser une adresse equipe ou produit, par exemple `Boorise Equipe <equipe@boorise.fr>`. Elle ne doit pas utiliser l'adresse securite.
 
 ## Build
 

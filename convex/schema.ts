@@ -51,10 +51,28 @@ export default defineSchema({
     userId: v.id("users"),
     role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_userId", ["organizationId", "userId"]),
+
+  organizationInvitations: defineTable({
+    organizationId: v.id("organizations"),
+    email: v.string(),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    tokenHash: v.string(),
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("revoked"), v.literal("expired")),
+    invitedByUserId: v.id("users"),
+    expiresAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_email", ["organizationId", "email"]),
 
   documentSequences: defineTable({
     organizationId: v.id("organizations"),

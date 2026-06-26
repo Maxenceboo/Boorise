@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Symbole Boorise</title>
+  <desc id="desc">Monogramme B violet avec une fleche orange ascendante.</desc>
+  <rect width="512" height="512" rx="112" fill="#491474"/>
+  <path d="M154 122H282C336 122 372 153 372 199C372 229 356 252 329 265C363 277 385 304 385 341C385 393 345 426 286 426H154V122Z" fill="#FFFAF3"/>
+  <path d="M218 184V240H276C298 240 312 229 312 212C312 194 298 184 276 184H218Z" fill="#491474"/>
+  <path d="M218 300V364H286C310 364 325 352 325 332C325 312 310 300 286 300H218Z" fill="#491474"/>
+  <path d="M298 349L378 269V329H432V397H364V343L298 409V349Z" fill="#E54715"/>
+  <path d="M378 269H432V323L378 269Z" fill="#F36A2C"/>
+</svg>

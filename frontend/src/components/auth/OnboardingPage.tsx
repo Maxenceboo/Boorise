@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { ArrowRight, LogOut } from "lucide-react";
 import { api } from "#convex/_generated/api";
+import { BooriseMark } from "@/components/brand/BooriseLogo";
 import { Button, Field, Notice, TextInput } from "@/components/ui/app";
 import { useToast } from "@/components/ui/toast-context";
 import { friendlyError } from "@/lib/errors";
@@ -37,7 +38,7 @@ export function OnboardingPage() {
       <form className="onboarding-card" onSubmit={handleSubmit}>
         <div className="flex items-start justify-between gap-4">
           <div className="brand-row px-0">
-            <div className="brand-mark">B</div>
+            <BooriseMark />
             <div>
               <div className="text-sm font-bold text-slate-950">Boorise</div>
               <div className="text-xs text-slate-500">Initialisation</div>

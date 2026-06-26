@@ -1,0 +1,19 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Logo Boorise</title>
+  <desc id="desc">Logo horizontal Boorise avec symbole B violet et fleche orange.</desc>
+  <rect width="1280" height="360" rx="40" fill="#FFFAF3"/>
+  <g transform="translate(72 52)">
+    <rect width="256" height="256" rx="56" fill="#491474"/>
+    <path d="M77 61H141C168 61 186 77 186 100C186 115 178 126 165 133C182 139 193 152 193 171C193 197 173 213 143 213H77V61Z" fill="#FFFAF3"/>
+    <path d="M109 92V120H138C149 120 156 115 156 106C156 97 149 92 138 92H109Z" fill="#491474"/>
+    <path d="M109 150V182H143C155 182 163 176 163 166C163 156 155 150 143 150H109Z" fill="#491474"/>
+    <path d="M149 175L189 135V165H216V199H182V172L149 205V175Z" fill="#E54715"/>
+    <path d="M189 135H216V162L189 135Z" fill="#F36A2C"/>
+  </g>
+  <g transform="translate(384 91)">
+    <text x="0" y="95" fill="#491474" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="94" font-weight="900" letter-spacing="-1">Boorise</text>
+    <text x="4" y="148" fill="#7A5F6C" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="31" font-weight="700">L'ERP qui fait grandir votre business.</text>
+    <rect x="4" y="178" width="194" height="10" rx="5" fill="#E54715"/>
+    <rect x="214" y="178" width="92" height="10" rx="5" fill="#622B86"/>
+  </g>
+</svg>

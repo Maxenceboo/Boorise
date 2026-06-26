@@ -1,10 +1,15 @@
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient, useConvexAuth, useMutation, useQuery } from "convex/react";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { api } from "#convex/_generated/api";
-import { AuthPage } from "@/components/auth/AuthPage";
+import { AuthPage, type AuthMode } from "@/components/auth/AuthPage";
+import { BooriseMark } from "@/components/brand/BooriseLogo";
 import { OnboardingPage } from "@/components/auth/OnboardingPage";
+import { LandingPage } from "@/components/marketing/LandingPage";
 import { Button, Notice } from "@/components/ui/app";
 import { useToast } from "@/components/ui/toast-context";
 import { ToastProvider } from "@/components/ui/toast";
@@ -34,6 +39,8 @@ export function App() {
           <WorkspaceGate>{app}</WorkspaceGate>
         </AuthGate>
       </ConvexAuthProvider>
+      <Analytics />
+      <SpeedInsights />
     </ToastProvider>
   );
 }
@@ -43,34 +50,55 @@ function shouldHandleAuthCode() {
   return params.get("flow") !== "reset";
 }
 
-function AuthGate({ children }: { children: React.ReactNode }) {
+function AuthGate({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   if (isLoading) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
-        Chargement...
-      </div>
-    );
+    return <LoadingScreen label="Chargement..." />;
   }
 
   if (!isAuthenticated) {
-    return <AuthPage />;
+    return <PublicAccess />;
   }
 
   return children;
 }
 
-function WorkspaceGate({ children }: { children: React.ReactNode }) {
+function PublicAccess() {
+  const [authMode, setAuthMode] = useState<AuthMode | null>(() => getInitialPublicAuthMode());
+
+  if (authMode) {
+    return (
+      <AuthPage
+        initialMode={authMode}
+        onBack={canReturnToLanding() ? () => {
+          setAuthMode(null);
+          window.history.replaceState({}, "", "/");
+        } : undefined}
+      />
+    );
+  }
+
+  return (
+    <LandingPage
+      onSignIn={() => {
+        setAuthMode("signIn");
+        window.history.replaceState({}, "", "/?auth=signin");
+      }}
+      onSignUp={() => {
+        setAuthMode("signUp");
+        window.history.replaceState({}, "", "/?auth=signup");
+      }}
+    />
+  );
+}
+
+function WorkspaceGate({ children }: { children: ReactNode }) {
   const current = useQuery(api.app.current);
   const invitationToken = getInvitationToken();
 
   if (current === undefined) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
-        Chargement de l'espace...
-      </div>
-    );
+    return <LoadingScreen label="Chargement de l'espace..." />;
   }
 
   if (invitationToken && !current?.organization) {
@@ -109,6 +137,13 @@ function InvitationAcceptPage({ token }: { token: string }) {
     <main className="auth-screen">
       <section className="auth-panel">
         <div className="auth-card">
+          <div className="brand-row px-0 pb-6">
+            <BooriseMark />
+            <div>
+              <div className="text-sm font-bold text-slate-950">Boorise</div>
+              <div className="text-xs text-slate-500">Invitation equipe</div>
+            </div>
+          </div>
           <div className="eyebrow">Invitation equipe</div>
           <h2>Rejoindre l'entreprise</h2>
           <p>Cette invitation rattache ton compte a l'equipe de l'entreprise dans Boorise. Un compte ne peut appartenir qu'a une seule equipe.</p>
@@ -122,9 +157,50 @@ function InvitationAcceptPage({ token }: { token: string }) {
   );
 }
 
+function LoadingScreen({ label }: { label: string }) {
+  return (
+    <div className="loading-screen">
+      <BooriseMark />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function getInvitationToken() {
   if (typeof window === "undefined") {
     return null;
   }
   return new URLSearchParams(window.location.search).get("invite");
+}
+
+function getInitialPublicAuthMode(): AuthMode | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("flow") === "reset" && params.has("code")) {
+    return "resetVerify";
+  }
+  if (params.has("invite")) {
+    return "signIn";
+  }
+  const auth = params.get("auth");
+  if (auth === "signin") {
+    return "signIn";
+  }
+  if (auth === "signup") {
+    return "signUp";
+  }
+  if (auth === "reset") {
+    return "reset";
+  }
+  return null;
+}
+
+function canReturnToLanding() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  return !params.has("invite") && !(params.get("flow") === "reset" && params.has("code"));
 }

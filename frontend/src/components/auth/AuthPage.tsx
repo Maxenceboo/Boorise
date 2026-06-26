@@ -2,19 +2,20 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useAction } from "convex/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, Chrome, LockKeyhole, Mail } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Chrome, LockKeyhole, Mail } from "lucide-react";
+import { BooriseMark } from "@/components/brand/BooriseLogo";
 import { Button, Field, Notice, TextInput } from "@/components/ui/app";
 import { useToast } from "@/components/ui/toast-context";
 import { friendlyError } from "@/lib/errors";
 import { api } from "#convex/_generated/api";
 
-type AuthMode = "signIn" | "signUp" | "reset" | "resetVerify";
+export type AuthMode = "signIn" | "signUp" | "reset" | "resetVerify";
 
-export function AuthPage() {
+export function AuthPage({ initialMode, onBack }: { initialMode?: AuthMode; onBack?: () => void }) {
   const { signIn } = useAuthActions();
   const toast = useToast();
   const requestPasswordReset = useAction(api.app.requestPasswordReset);
-  const [mode, setMode] = useState<AuthMode>(getInitialAuthMode);
+  const [mode, setMode] = useState<AuthMode>(() => getInitialAuthMode(initialMode));
   const [pending, setPending] = useState(false);
   const [oauthPending, setOauthPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +111,7 @@ export function AuthPage() {
     <main className="auth-screen">
       <section className="auth-visual">
         <div className="brand-row px-0">
-          <div className="brand-mark bg-white text-slate-950">B</div>
+          <BooriseMark />
           <div>
             <div className="text-sm font-bold text-white">Boorise</div>
             <div className="text-xs text-slate-300">ERP artisans</div>
@@ -134,7 +135,7 @@ export function AuthPage() {
         <div className="auth-card">
           <div className="lg:hidden">
             <div className="brand-row px-0 pb-6">
-              <div className="brand-mark">B</div>
+              <BooriseMark />
               <div>
                 <div className="text-sm font-bold text-slate-950">Boorise</div>
                 <div className="text-xs text-slate-500">ERP artisans</div>
@@ -143,6 +144,12 @@ export function AuthPage() {
           </div>
 
           <div className="eyebrow">Acces securise</div>
+          {onBack && mode !== "resetVerify" ? (
+            <button className="auth-back" type="button" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4" />
+              Presentation
+            </button>
+          ) : null}
           <h2>{title}</h2>
           <p>
             {mode === "signIn"
@@ -228,12 +235,22 @@ export function AuthPage() {
   );
 }
 
-function getInitialAuthMode(): AuthMode {
+function getInitialAuthMode(initialMode?: AuthMode): AuthMode {
   if (typeof window === "undefined") {
-    return "signIn";
+    return initialMode ?? "signIn";
   }
   const params = new URLSearchParams(window.location.search);
-  return params.get("flow") === "reset" && params.has("code") ? "resetVerify" : "signIn";
+  if (params.get("flow") === "reset" && params.has("code")) {
+    return "resetVerify";
+  }
+  const auth = params.get("auth");
+  if (auth === "signup") {
+    return "signUp";
+  }
+  if (auth === "reset") {
+    return "reset";
+  }
+  return initialMode ?? "signIn";
 }
 
 function getResetCode() {

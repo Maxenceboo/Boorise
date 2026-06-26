@@ -86,14 +86,14 @@ export function AuthPage() {
           </p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            <Field label="Email">
+            <Field label="Email" required>
               <div className="input-with-icon">
                 <Mail className="h-4 w-4" />
                 <TextInput name="email" type="email" placeholder="toi@entreprise.fr" required />
               </div>
             </Field>
             {mode !== "reset" ? (
-              <Field label="Mot de passe">
+              <Field label="Mot de passe" required>
                 <div className="input-with-icon">
                   <LockKeyhole className="h-4 w-4" />
                   <TextInput name="password" type="password" placeholder="Minimum 8 caracteres" required />

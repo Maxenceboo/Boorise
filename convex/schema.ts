@@ -72,6 +72,7 @@ export default defineSchema({
     companyName: v.optional(v.string()),
     customerType: v.optional(v.union(v.literal("individual"), v.literal("business"), v.literal("public"))),
     siren: v.optional(v.string()),
+    siret: v.optional(v.string()),
     vatNumber: v.optional(v.string()),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),

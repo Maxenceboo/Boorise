@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "convex/react";
-import { Boxes, BriefcaseBusiness, Edit3, Filter, Package, Plus, Ruler, Scissors, Trash2 } from "lucide-react";
+import { Boxes, BriefcaseBusiness, Edit3, Filter, Package, Plus, Scissors, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "#convex/_generated/api";
 import type { Doc, Id } from "#convex/_generated/dataModel";
@@ -21,6 +21,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/ui/app";
+import { useBlurAutosave } from "@/hooks/useBlurAutosave";
 import { formatCurrency } from "@/lib/format";
 
 type Material = Doc<"materials">;
@@ -74,6 +75,19 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
   const [serviceModal, setServiceModal] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const materialNeedsLength = ["metre", "m2", "m3"].includes(materialForm.unit);
+  const materialNeedsWidth = ["m2", "m3"].includes(materialForm.unit);
+  const materialNeedsHeight = materialForm.unit === "m3";
+  const autoSaveMaterialOnBlur = useBlurAutosave<HTMLDivElement>(() => {
+    if (editingMaterial) {
+      void saveMaterial(false);
+    }
+  }, { enabled: materialModal && !!editingMaterial });
+  const autoSaveServiceOnBlur = useBlurAutosave<HTMLDivElement>(() => {
+    if (editingService) {
+      void saveService(false);
+    }
+  }, { enabled: serviceModal && !!editingService });
 
   const categories = useMemo(
     () => Array.from(new Set((materials ?? []).map((material) => material.category).filter(Boolean) as string[])).sort(),
@@ -166,7 +180,22 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
     setServiceModal(true);
   }
 
-  async function saveMaterial() {
+  function setMaterialUnit(unit: MaterialUnit) {
+    setMaterialForm((current) => ({
+      ...current,
+      unit,
+      length: ["metre", "m2", "m3"].includes(unit) ? current.length : "",
+      width: ["m2", "m3"].includes(unit) ? current.width : "",
+      height: unit === "m3" ? current.height : "",
+    }));
+  }
+
+  async function saveMaterial(closeOnSave = true) {
+    if (!materialForm.divisible && !optionalNumber(materialForm.quantityPerLot)) {
+      setError("Renseigne la quantite contenue par achat pour un materiau vendu par unite ou lot.");
+      return false;
+    }
+
     setPending(true);
     setError(null);
     const payload = {
@@ -180,9 +209,9 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
       defaultWasteRate: materialForm.defaultWasteRate,
       divisible: materialForm.divisible,
       quantityPerLot: materialForm.divisible ? undefined : optionalNumber(materialForm.quantityPerLot),
-      length: optionalNumber(materialForm.length),
-      width: optionalNumber(materialForm.width),
-      height: optionalNumber(materialForm.height),
+      length: materialNeedsLength ? optionalNumber(materialForm.length) : undefined,
+      width: materialNeedsWidth ? optionalNumber(materialForm.width) : undefined,
+      height: materialNeedsHeight ? optionalNumber(materialForm.height) : undefined,
     };
     try {
       if (editingMaterial) {
@@ -190,15 +219,19 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
       } else {
         await createMaterial(payload);
       }
-      setMaterialModal(false);
+      if (closeOnSave) {
+        setMaterialModal(false);
+      }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enregistrement impossible");
+      return false;
     } finally {
       setPending(false);
     }
   }
 
-  async function saveService() {
+  async function saveService(closeOnSave = true) {
     setPending(true);
     setError(null);
     const payload = {
@@ -213,11 +246,35 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
       } else {
         await createService(payload);
       }
-      setServiceModal(false);
+      if (closeOnSave) {
+        setServiceModal(false);
+      }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enregistrement impossible");
+      return false;
     } finally {
       setPending(false);
+    }
+  }
+
+  async function closeMaterialModal() {
+    if (!editingMaterial) {
+      setMaterialModal(false);
+      return;
+    }
+    if (await saveMaterial(false)) {
+      setMaterialModal(false);
+    }
+  }
+
+  async function closeServiceModal() {
+    if (!editingService) {
+      setServiceModal(false);
+      return;
+    }
+    if (await saveService(false)) {
+      setServiceModal(false);
     }
   }
 
@@ -338,52 +395,70 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
           }
         >
           {tab === "materials" ? (
-            materialRows.length === 0 ? (
-              <EmptyState title="Aucun materiau" action={<Button onClick={openCreateMaterial}>Ajouter un materiau</Button>} />
-            ) : (
-              <div className="catalog-grid">
-                {materialRows.map((material) => (
-                  <article key={material._id} className="material-card">
-                    <div className="material-card-header">
-                      <div className="avatar avatar-square"><Boxes className="h-4 w-4" /></div>
-                      <div>
-                        <strong>{material.name}</strong>
-                        <span>{material.reference ?? "Sans reference"}</span>
-                      </div>
-                      <div className="row-actions">
-                        <IconButton label="Modifier" onClick={() => openEditMaterial(material)}><Edit3 className="h-4 w-4" /></IconButton>
-                        <IconButton label="Archiver" variant="danger" onClick={() => void removeMaterial(material._id, material.name)}><Trash2 className="h-4 w-4" /></IconButton>
-                      </div>
-                    </div>
-                    <div className="material-card-body">
-                      <MaterialFact label="Prix achat" value={formatCurrency(material.purchasePriceHt)} />
-                      <MaterialFact label="Unite besoin" value={formatUnit(materialDemandUnit(material))} />
-                      <MaterialFact label="Perte defaut" value={`${material.defaultWasteRate}%`} />
-                      <MaterialFact label="Conditionnement" value={materialPackaging(material)} />
-                    </div>
-                    <div className="material-card-footer">
-                      <Badge tone="indigo">{material.category ?? "Sans categorie"}</Badge>
-                      {material.supplier ? <span>{material.supplier}</span> : null}
-                      <Dimensions material={material} />
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )
-          ) : (
             <DataTable
-              rows={serviceRows}
-              rowKey={(service) => service._id}
-              empty={<EmptyState title="Aucune prestation" action={<Button onClick={openCreateService}>Ajouter une prestation</Button>} />}
+              density="compact"
+              loading={materials === undefined}
+              rows={materialRows}
+              rowKey={(material) => material._id}
+              empty={<EmptyState title="Aucun materiau" action={<Button onClick={openCreateMaterial}>Ajouter un materiau</Button>} />}
               columns={[
-                { key: "name", header: "Nom", render: (service) => <strong>{service.name}</strong> },
-                { key: "description", header: "Description", render: (service) => service.description ?? "-" },
-                { key: "unit", header: "Unite", render: (service) => service.unit },
-                { key: "price", header: "Prix HT", render: (service) => formatCurrency(service.unitPriceHt) },
+                {
+                  key: "name",
+                  header: "Materiau",
+                  sortValue: (material) => material.name,
+                  render: (material) => (
+                    <button className="material-table-name" onClick={() => openEditMaterial(material)}>
+                      <strong>{material.name}</strong>
+                      <span>{material.reference ?? "Sans reference"}</span>
+                    </button>
+                  ),
+                },
+                { key: "category", header: "Categorie", sortValue: (material) => material.category ?? "", render: (material) => (
+                  <div className="table-stack">
+                    <Badge tone="indigo">{material.category ?? "Sans categorie"}</Badge>
+                    <span>{material.supplier ?? "Sans fournisseur"}</span>
+                  </div>
+                ) },
+                { key: "unit", header: "Mesure", sortValue: (material) => materialDemandUnit(material), render: (material) => (
+                  <div className="table-stack">
+                    <strong>{formatUnit(materialDemandUnit(material))}</strong>
+                    <span>{formatDimensions(material)}</span>
+                  </div>
+                ) },
+                { key: "packaging", header: "Achat", sortValue: (material) => material.divisible ? 0 : material.quantityPerLot ?? 1, render: (material) => materialPackaging(material) },
+                { key: "waste", header: "Perte", sortValue: (material) => material.defaultWasteRate, render: (material) => `${material.defaultWasteRate}%` },
+                { key: "price", header: "Prix HT", sortValue: (material) => material.purchasePriceHt, render: (material) => <strong>{formatCurrency(material.purchasePriceHt)}</strong> },
                 {
                   key: "actions",
                   header: "",
                   className: "actions-cell",
+                  sortable: false,
+                  render: (material) => (
+                    <div className="row-actions">
+                      <IconButton label="Modifier" onClick={() => openEditMaterial(material)}><Edit3 className="h-4 w-4" /></IconButton>
+                      <IconButton label="Archiver" variant="danger" onClick={() => void removeMaterial(material._id, material.name)}><Trash2 className="h-4 w-4" /></IconButton>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          ) : (
+            <DataTable
+              density="compact"
+              loading={services === undefined}
+              rows={serviceRows}
+              rowKey={(service) => service._id}
+              empty={<EmptyState title="Aucune prestation" action={<Button onClick={openCreateService}>Ajouter une prestation</Button>} />}
+              columns={[
+                { key: "name", header: "Nom", sortValue: (service) => service.name, render: (service) => <strong>{service.name}</strong> },
+                { key: "description", header: "Description", sortValue: (service) => service.description ?? "", render: (service) => service.description ?? "-" },
+                { key: "unit", header: "Unite", sortValue: (service) => service.unit, render: (service) => service.unit },
+                { key: "price", header: "Prix HT", sortValue: (service) => service.unitPriceHt, render: (service) => formatCurrency(service.unitPriceHt) },
+                {
+                  key: "actions",
+                  header: "",
+                  className: "actions-cell",
+                  sortable: false,
                   render: (service) => (
                     <div className="row-actions">
                       <IconButton label="Modifier" onClick={() => openEditService(service)}><Edit3 className="h-4 w-4" /></IconButton>
@@ -401,20 +476,18 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
         open={materialModal}
         title={editingMaterial ? "Modifier le materiau" : "Nouveau materiau"}
         description="L'unite sert au besoin dans le devis. Le conditionnement sert uniquement a calculer ce qu'il faut acheter."
-        onClose={() => setMaterialModal(false)}
+        onClose={() => void closeMaterialModal()}
         size="xl"
         footer={
           <>
-            <Button variant="outline" onClick={() => setMaterialModal(false)}>
-              Annuler
+            <Button variant="outline" onClick={() => void closeMaterialModal()}>
+              {editingMaterial ? "Fermer" : "Annuler"}
             </Button>
-            <Button disabled={pending} onClick={() => void saveMaterial()}>
-              {pending ? "Enregistrement..." : "Enregistrer"}
-            </Button>
+            {!editingMaterial ? <Button disabled={pending} onClick={() => void saveMaterial()}>{pending ? "Creation..." : "Creer"}</Button> : null}
           </>
         }
       >
-        <div className="form-grid form-grid-3">
+        <div className="form-grid form-grid-3" onBlurCapture={autoSaveMaterialOnBlur}>
           {error ? <Notice kind="error">{error}</Notice> : null}
           <FormSection title="Identification" description="Le nom est obligatoire. Le reste sert au classement et a la recherche.">
             <Field label="Nom" required><TextInput value={materialForm.name} onChange={(e) => setMaterialForm({ ...materialForm, name: e.target.value })} /></Field>
@@ -425,7 +498,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
 
           <FormSection title="Prix et besoin" description="Ces champs pilotent directement le calcul dans les devis.">
             <Field label="Unite du besoin" required hint="Ex: piece pour une poutre, m2 pour une plaque, metre pour un tasseau.">
-              <SelectInput value={materialForm.unit} onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value as MaterialUnit })}>
+              <SelectInput value={materialForm.unit} onChange={(e) => setMaterialUnit(e.target.value as MaterialUnit)}>
                 {materialUnits.map((unit) => <option key={unit} value={unit}>{formatUnit(unit)}</option>)}
               </SelectInput>
             </Field>
@@ -444,15 +517,17 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
                 <span>Pieces, boites, lots avec arrondi automatique.</span>
               </button>
             </div>
-            <Field label="Quantite contenue par achat" optional hint="Ex: lot de 2 poutres => 2. Boite de 200 vis => 200.">
-              <NumberInput min={0} step="0.01" disabled={materialForm.divisible} value={materialForm.quantityPerLot} onChange={(e) => setMaterialForm({ ...materialForm, quantityPerLot: e.target.value })} />
-            </Field>
+            {!materialForm.divisible ? (
+              <Field label="Quantite contenue par achat" required hint="Ex: lot de 2 poutres => 2. Boite de 200 vis => 200.">
+                <NumberInput min={0} step="0.01" value={materialForm.quantityPerLot} onChange={(e) => setMaterialForm({ ...materialForm, quantityPerLot: e.target.value })} />
+              </Field>
+            ) : null}
           </FormSection>
 
-          <FormSection title="Details facultatifs" description="Dimensions et description interne pour mieux qualifier le catalogue.">
-            <Field label="Longueur" optional><NumberInput min={0} step="0.01" value={materialForm.length} onChange={(e) => setMaterialForm({ ...materialForm, length: e.target.value })} /></Field>
-            <Field label="Largeur" optional><NumberInput min={0} step="0.01" value={materialForm.width} onChange={(e) => setMaterialForm({ ...materialForm, width: e.target.value })} /></Field>
-            <Field label="Hauteur" optional><NumberInput min={0} step="0.01" value={materialForm.height} onChange={(e) => setMaterialForm({ ...materialForm, height: e.target.value })} /></Field>
+          <FormSection title="Details facultatifs" description="Les dimensions apparaissent uniquement quand l'unite du besoin les rend utiles.">
+            {materialNeedsLength ? <Field label="Longueur" optional><NumberInput min={0} step="0.01" value={materialForm.length} onChange={(e) => setMaterialForm({ ...materialForm, length: e.target.value })} /></Field> : null}
+            {materialNeedsWidth ? <Field label="Largeur" optional><NumberInput min={0} step="0.01" value={materialForm.width} onChange={(e) => setMaterialForm({ ...materialForm, width: e.target.value })} /></Field> : null}
+            {materialNeedsHeight ? <Field label="Hauteur" optional><NumberInput min={0} step="0.01" value={materialForm.height} onChange={(e) => setMaterialForm({ ...materialForm, height: e.target.value })} /></Field> : null}
             <Field label="Description" optional><TextArea value={materialForm.description} onChange={(e) => setMaterialForm({ ...materialForm, description: e.target.value })} /></Field>
           </FormSection>
         </div>
@@ -462,20 +537,18 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
         open={serviceModal}
         title={editingService ? "Modifier la prestation" : "Nouvelle prestation"}
         description="Ajoute une ligne de main d'oeuvre ou un forfait reutilisable dans les devis."
-        onClose={() => setServiceModal(false)}
+        onClose={() => void closeServiceModal()}
         size="md"
         footer={
           <>
-            <Button variant="outline" onClick={() => setServiceModal(false)}>
-              Annuler
+            <Button variant="outline" onClick={() => void closeServiceModal()}>
+              {editingService ? "Fermer" : "Annuler"}
             </Button>
-            <Button disabled={pending} onClick={() => void saveService()}>
-              {pending ? "Enregistrement..." : "Enregistrer"}
-            </Button>
+            {!editingService ? <Button disabled={pending} onClick={() => void saveService()}>{pending ? "Creation..." : "Creer"}</Button> : null}
           </>
         }
       >
-        <div className="form-grid">
+        <div className="form-grid" onBlurCapture={autoSaveServiceOnBlur}>
           {error ? <Notice kind="error">{error}</Notice> : null}
           <FormSection title="Prestation" description="Le nom, l'unite et le prix sont repris dans les devis.">
             <Field label="Nom" required><TextInput value={serviceForm.name} onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })} /></Field>
@@ -485,15 +558,6 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
           </FormSection>
         </div>
       </Modal>
-    </div>
-  );
-}
-
-function MaterialFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -523,17 +587,12 @@ function formatUnit(unit?: string) {
   return unit ? labels[unit] ?? unit : "";
 }
 
-function Dimensions({ material }: { material: Material }) {
+function formatDimensions(material: Material) {
   const hasDimension = material.length !== undefined || material.width !== undefined || material.height !== undefined;
   if (!hasDimension) {
     return "-";
   }
-  return (
-    <span className="contact-cell">
-      <Ruler className="h-4 w-4" />
-      {[material.length, material.width, material.height].map((value) => value ?? "-").join(" x ")}
-    </span>
-  );
+  return [material.length, material.width, material.height].map((value) => value ?? "-").join(" x ");
 }
 
 function optional(value: string) {

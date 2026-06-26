@@ -20,6 +20,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/ui/app";
+import { useBlurAutosave } from "@/hooks/useBlurAutosave";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced";
@@ -47,6 +48,14 @@ const statusTones: Record<QuoteStatus, "slate" | "indigo" | "emerald" | "rose" |
   accepted: "emerald",
   refused: "rose",
   invoiced: "cyan",
+};
+
+const quoteStatusOrder: Record<QuoteStatus, number> = {
+  draft: 1,
+  sent: 2,
+  accepted: 3,
+  invoiced: 4,
+  refused: 5,
 };
 
 const emptyQuote = {
@@ -81,8 +90,17 @@ const emptyQuickClient = {
   name: "",
   firstName: "",
   companyName: "",
+  customerType: "individual" as "individual" | "business" | "public",
+  siren: "",
+  siret: "",
+  hasVatNumber: false,
+  vatNumber: "",
   phone: "",
   email: "",
+  address: "",
+  postalCode: "",
+  city: "",
+  country: "France",
 };
 
 const emptyQuickMaterial = {
@@ -122,6 +140,7 @@ export function QuotesPage() {
   const [quoteModal, setQuoteModal] = useState(false);
   const [editQuoteModal, setEditQuoteModal] = useState(false);
   const [editLineModal, setEditLineModal] = useState(false);
+  const [previewModal, setPreviewModal] = useState(false);
   const [editingLineId, setEditingLineId] = useState<Id<"quoteItems"> | null>(null);
   const [quickClientModal, setQuickClientModal] = useState(false);
   const [quickMaterialModal, setQuickMaterialModal] = useState(false);
@@ -130,8 +149,15 @@ export function QuotesPage() {
   const [error, setError] = useState<string | null>(null);
   const selectedQuote = useQuery(api.quotes.get, selectedQuoteId ? { quoteId: selectedQuoteId } : "skip");
   const organization = current?.organization ?? null;
+  const isQuickProfessionalClient = quickClientForm.customerType === "business" || quickClientForm.customerType === "public";
+  const isQuickBusinessClient = quickClientForm.customerType === "business";
   const selectedMaterial = (materials ?? []).find((material) => material._id === lineForm.materialId) ?? null;
   const selectedService = (services ?? []).find((service) => service._id === lineForm.serviceId) ?? null;
+  const autoSaveQuoteDetailsOnBlur = useBlurAutosave<HTMLDivElement>(() => {
+    if (selectedQuote) {
+      void saveQuoteDetails(false);
+    }
+  }, { enabled: editQuoteModal && !!selectedQuote });
   const preview = useMemo(() => calculatePreview(lineForm, selectedMaterial, selectedService), [lineForm, selectedMaterial, selectedService]);
   const quoteStats = useMemo(() => {
     const list = quotes ?? [];
@@ -144,9 +170,33 @@ export function QuotesPage() {
   }, [quotes]);
 
   useEffect(() => {
-    if (!selectedQuoteId && quotes?.[0]) {
-      setSelectedQuoteId(quotes[0]._id);
+    const rawDraftSeed = sessionStorage.getItem("boorise:quoteDraftSeed");
+    if (!rawDraftSeed) {
+      return;
     }
+
+    sessionStorage.removeItem("boorise:quoteDraftSeed");
+    try {
+      const seed = JSON.parse(rawDraftSeed) as Partial<typeof emptyQuote>;
+      setQuoteForm({
+        ...emptyQuote,
+        clientId: typeof seed.clientId === "string" ? seed.clientId : "",
+        title: typeof seed.title === "string" && seed.title.trim() ? seed.title : emptyQuote.title,
+        siteDescription: typeof seed.siteDescription === "string" ? seed.siteDescription : "",
+        deliveryAddress: typeof seed.deliveryAddress === "string" ? seed.deliveryAddress : "",
+      });
+      setQuoteModal(true);
+    } catch {
+      setQuoteForm(emptyQuote);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedQuoteId || !quotes?.length) {
+      return;
+    }
+
+    setSelectedQuoteId(quotes[0]._id);
   }, [quotes, selectedQuoteId]);
 
   useEffect(() => {
@@ -166,6 +216,10 @@ export function QuotesPage() {
   }
 
   async function createQuote() {
+    if (!quoteForm.clientId) {
+      setError("Selectionne un client avant de creer un devis exploitable legalement.");
+      return;
+    }
     setPending("quote");
     setError(null);
     try {
@@ -214,9 +268,13 @@ export function QuotesPage() {
     setEditQuoteModal(true);
   }
 
-  async function saveQuoteDetails() {
+  async function saveQuoteDetails(closeOnSave = true) {
     if (!selectedQuote) {
-      return;
+      return false;
+    }
+    if (!editQuoteForm.clientId) {
+      setError("Selectionne un client avant d'enregistrer ce devis.");
+      return false;
     }
     setPending("quote-details");
     setError(null);
@@ -237,11 +295,21 @@ export function QuotesPage() {
         legalNotice: optional(editQuoteForm.legalNotice),
         notes: optional(editQuoteForm.notes),
       });
-      setEditQuoteModal(false);
+      if (closeOnSave) {
+        setEditQuoteModal(false);
+      }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Modification impossible");
+      return false;
     } finally {
       setPending(null);
+    }
+  }
+
+  async function closeEditQuoteModal() {
+    if (await saveQuoteDetails(false)) {
+      setEditQuoteModal(false);
     }
   }
 
@@ -291,9 +359,9 @@ export function QuotesPage() {
     setEditLineModal(true);
   }
 
-  async function saveEditedLine() {
+  async function saveEditedLine(closeOnSave = true) {
     if (!editingLineId) {
-      return;
+      return false;
     }
     setPending("edit-line");
     setError(null);
@@ -311,13 +379,25 @@ export function QuotesPage() {
         wasteRate: optionalNumber(editLineForm.wasteRate),
         marginRate: editLineForm.marginRate,
       });
+      if (closeOnSave) {
+        setEditLineModal(false);
+        setEditingLineId(null);
+        setEditLineForm(emptyLine);
+      }
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Modification de ligne impossible");
+      return false;
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function closeEditLineModal() {
+    if (await saveEditedLine(false)) {
       setEditLineModal(false);
       setEditingLineId(null);
       setEditLineForm(emptyLine);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Modification de ligne impossible");
-    } finally {
-      setPending(null);
     }
   }
 
@@ -358,16 +438,63 @@ export function QuotesPage() {
     }
   }
 
+  function setQuickClientType(customerType: typeof quickClientForm.customerType) {
+    setQuickClientForm((current) => ({
+      ...current,
+      customerType,
+      companyName: customerType === "individual" ? "" : current.companyName,
+      siren: customerType === "individual" ? "" : current.siren,
+      siret: customerType === "individual" ? "" : current.siret,
+      hasVatNumber: customerType === "business" ? current.hasVatNumber : false,
+      vatNumber: customerType === "business" && current.hasVatNumber ? current.vatNumber : "",
+    }));
+  }
+
+  function setQuickClientSiret(value: string) {
+    const siren = deriveSiren(value);
+    setQuickClientForm((current) => ({ ...current, siret: value, siren: siren ?? current.siren }));
+  }
+
+  function setQuickClientHasVatNumber(value: boolean) {
+    setQuickClientForm((current) => ({ ...current, hasVatNumber: value, vatNumber: value ? current.vatNumber : "" }));
+  }
+
   async function saveQuickClient() {
+    if (!quickClientForm.name.trim() || !quickClientForm.address.trim() || !quickClientForm.postalCode.trim() || !quickClientForm.city.trim() || !quickClientForm.country.trim()) {
+      setError("Renseigne le nom et l'adresse complete du client avant de l'utiliser dans un devis.");
+      return;
+    }
+    if ((quickClientForm.customerType === "business" || quickClientForm.customerType === "public") && !quickClientForm.companyName.trim()) {
+      setError("Renseigne la societe ou l'organisme pour ce client professionnel.");
+      return;
+    }
+    if ((quickClientForm.customerType === "business" || quickClientForm.customerType === "public") && !quickClientForm.siret.trim()) {
+      setError("Renseigne le SIRET du client professionnel. Le SIREN sera calcule automatiquement.");
+      return;
+    }
+    if (quickClientForm.customerType === "business" && quickClientForm.hasVatNumber && !quickClientForm.vatNumber.trim()) {
+      setError("Renseigne le numero de TVA intracommunautaire ou indique que le client n'en a pas.");
+      return;
+    }
+
     setPending("quick-client");
     setError(null);
+    const computedSiren = deriveSiren(quickClientForm.siret) ?? quickClientForm.siren;
     try {
       const clientId = await createClient({
         name: quickClientForm.name,
         firstName: optional(quickClientForm.firstName),
         companyName: optional(quickClientForm.companyName),
+        customerType: quickClientForm.customerType,
+        siren: optional(computedSiren),
+        siret: optional(quickClientForm.siret),
+        vatNumber: quickClientForm.customerType === "business" && quickClientForm.hasVatNumber ? optional(quickClientForm.vatNumber) : undefined,
         phone: optional(quickClientForm.phone),
         email: optional(quickClientForm.email),
+        address: optional(quickClientForm.address),
+        postalCode: optional(quickClientForm.postalCode),
+        city: optional(quickClientForm.city),
+        country: optional(quickClientForm.country),
       });
       setQuoteForm((current) => ({ ...current, clientId }));
       setQuickClientForm(emptyQuickClient);
@@ -380,6 +507,15 @@ export function QuotesPage() {
   }
 
   async function saveQuickMaterial() {
+    if (!quickMaterialForm.name.trim()) {
+      setError("Renseigne le nom du materiau avant de l'ajouter au catalogue.");
+      return;
+    }
+    if (!quickMaterialForm.divisible && !optionalNumber(quickMaterialForm.quantityPerLot)) {
+      setError("Renseigne la quantite contenue par achat pour un materiau vendu par lot.");
+      return;
+    }
+
     setPending("quick-material");
     setError(null);
     try {
@@ -413,12 +549,6 @@ export function QuotesPage() {
         eyebrow="Chiffrage"
         title="Devis"
         description="Un atelier de chiffrage clair : choisir un devis, ajouter les lignes, controler les pertes et valider les totaux."
-        actions={
-          <Button onClick={() => setQuoteModal(true)}>
-            <Plus className="h-4 w-4" />
-            Nouveau devis
-          </Button>
-        }
       />
       {error ? <Notice kind="error">{error}</Notice> : null}
 
@@ -457,14 +587,17 @@ export function QuotesPage() {
           }
         >
           <DataTable
+            density="compact"
+            loading={quotes === undefined}
             rows={quotes ?? []}
             rowKey={(quote) => quote._id}
             selectedKey={selectedQuoteId}
-            empty={<EmptyState title="Aucun devis" action={<Button onClick={() => setQuoteModal(true)}>Creer un devis</Button>} />}
+            empty={<EmptyState title="Aucun devis" description="Utilise l'action principale en haut de page pour creer ton premier devis." />}
             columns={[
               {
                 key: "number",
                 header: "Devis",
+                sortValue: (quote) => quote.number,
                 render: (quote) => (
                   <a className="quote-table-select" href="#devis-detail" onClick={(event) => {
                     event.preventDefault();
@@ -475,15 +608,16 @@ export function QuotesPage() {
                   </a>
                 ),
               },
-              { key: "client", header: "Client", render: (quote) => formatClientName(quote.client) },
-              { key: "date", header: "Date", render: (quote) => formatDate(quote.issueDate) },
-              { key: "totalHt", header: "HT", render: (quote) => formatCurrency(quote.totalHt) },
-              { key: "totalTtc", header: "TTC", render: (quote) => <strong>{formatCurrency(quote.totalTtc)}</strong> },
-              { key: "status", header: "Statut", render: (quote) => <Badge tone={statusTones[quote.status as QuoteStatus]}>{statusLabels[quote.status as QuoteStatus]}</Badge> },
+              { key: "client", header: "Client", sortValue: (quote) => formatClientName(quote.client), render: (quote) => formatClientName(quote.client) },
+              { key: "date", header: "Date", sortValue: (quote) => quote.issueDate, render: (quote) => formatDate(quote.issueDate) },
+              { key: "totalHt", header: "HT", sortValue: (quote) => quote.totalHt, render: (quote) => formatCurrency(quote.totalHt) },
+              { key: "totalTtc", header: "TTC", sortValue: (quote) => quote.totalTtc, render: (quote) => <strong>{formatCurrency(quote.totalTtc)}</strong> },
+              { key: "status", header: "Statut", sortValue: (quote) => quoteStatusOrder[quote.status as QuoteStatus], render: (quote) => <Badge tone={statusTones[quote.status as QuoteStatus]}>{statusLabels[quote.status as QuoteStatus]}</Badge> },
               {
                 key: "actions",
                 header: "",
                 className: "actions-cell",
+                sortable: false,
                 render: (quote) => (
                   <div className="row-actions">
                     <IconButton label="Dupliquer" onClick={() => void copyQuote(quote._id)}><Copy className="h-4 w-4" /></IconButton>
@@ -520,7 +654,7 @@ export function QuotesPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={openEditQuote}><Edit3 className="h-4 w-4" />Modifier</Button>
-                  <Button variant="outline" onClick={() => printQuoteDocument(selectedQuote.quote.number)}><Printer className="h-4 w-4" />PDF</Button>
+                  <Button variant="outline" onClick={() => setPreviewModal(true)}><Printer className="h-4 w-4" />Apercu</Button>
                   <Button variant="outline" disabled={pending === `copy-${selectedQuote.quote._id}`} onClick={() => void copyQuote(selectedQuote.quote._id)}><Copy className="h-4 w-4" />Dupliquer</Button>
                   <Button disabled={selectedQuote.quote.status === "invoiced"} onClick={() => void invoiceQuote(selectedQuote.quote._id)}><ReceiptText className="h-4 w-4" />Facturer</Button>
                 </div>
@@ -610,7 +744,6 @@ export function QuotesPage() {
 
               <QuoteLinesTable items={selectedQuote.items} materials={materials ?? []} onEdit={openEditLine} onDelete={deleteLine} />
               <PurchaseList items={selectedQuote.items} materials={materials ?? []} />
-              <QuoteDocument quoteBundle={selectedQuote} organization={organization} />
             </div>
           )}
           </Panel>
@@ -636,10 +769,12 @@ export function QuotesPage() {
         }
       >
         <div className="form-grid">
-          <FormSection title="Base du devis" description="Le titre est obligatoire. Le client peut etre ajoute maintenant ou plus tard.">
-            <Field label="Client" optional>
+          {error ? <Notice kind="error">{error}</Notice> : null}
+          <Notice kind="warning">Le client, l'objet et la TVA structurent le devis. Les mentions vides reprennent le profil entreprise quand un defaut existe.</Notice>
+          <FormSection title="Base du devis" description="Le client, la date, la validite et le detail des prix structurent le document client.">
+            <Field label="Client" legalRequired>
               <div className="quote-client-picker">
-                <SelectInput value={quoteForm.clientId} onChange={(event) => setQuoteForm({ ...quoteForm, clientId: event.target.value })}>
+                <SelectInput required value={quoteForm.clientId} onChange={(event) => setQuoteForm({ ...quoteForm, clientId: event.target.value })}>
                   <option value="">Client non defini</option>
                   {(clients ?? []).map((client) => (
                     <option key={client._id} value={client._id}>{formatClientName(client)}</option>
@@ -651,32 +786,32 @@ export function QuotesPage() {
                 </Button>
               </div>
             </Field>
-            <Field label="Titre" required><TextInput value={quoteForm.title} onChange={(event) => setQuoteForm({ ...quoteForm, title: event.target.value })} /></Field>
-            <Field label="TVA (%)" required><NumberInput min={0} max={100} step="0.01" value={quoteForm.vatRate} onChange={(event) => setQuoteForm({ ...quoteForm, vatRate: Number(event.target.value) })} /></Field>
-            <Field label="Valable jusqu'au" optional><TextInput type="date" value={quoteForm.validUntil} onChange={(event) => setQuoteForm({ ...quoteForm, validUntil: event.target.value })} /></Field>
+            <Field label="Titre / objet" required><TextInput required value={quoteForm.title} onChange={(event) => setQuoteForm({ ...quoteForm, title: event.target.value })} /></Field>
+            <Field label="TVA (%)" required><NumberInput required min={0} max={100} step="0.01" value={quoteForm.vatRate} onChange={(event) => setQuoteForm({ ...quoteForm, vatRate: Number(event.target.value) })} /></Field>
+            <Field label="Valable jusqu'au" optional hint="Si vide, la validite par defaut du profil entreprise est appliquee."><TextInput type="date" value={quoteForm.validUntil} onChange={(event) => setQuoteForm({ ...quoteForm, validUntil: event.target.value })} /></Field>
           </FormSection>
 
-          <FormSection title="Chantier" description="Ces informations apparaitront sur le document client si elles sont renseignees.">
+          <FormSection title="Chantier" description="Ces informations identifient le lieu et la nature des travaux sur le document client.">
             <Field label="Description chantier" optional><TextArea value={quoteForm.siteDescription} onChange={(event) => setQuoteForm({ ...quoteForm, siteDescription: event.target.value })} /></Field>
             <Field label="Adresse chantier / livraison" optional><TextArea value={quoteForm.deliveryAddress} onChange={(event) => setQuoteForm({ ...quoteForm, deliveryAddress: event.target.value })} /></Field>
           </FormSection>
 
-          <FormSection title="Mentions avancees" description="Garde les valeurs par defaut sauf cas particulier.">
-            <Field label="Nature operation" optional>
+          <FormSection title="Mentions avancees" description="Ces mentions sont reprises depuis le profil entreprise si elles restent vides ici.">
+            <Field label="Nature operation" legalRequired>
               <SelectInput value={quoteForm.operationType} onChange={(event) => setQuoteForm({ ...quoteForm, operationType: event.target.value as typeof quoteForm.operationType })}>
                 <option value="mixed">Biens et services</option>
                 <option value="services">Services</option>
                 <option value="goods">Livraison de biens</option>
               </SelectInput>
             </Field>
-            <Field label="TVA sur les debits" optional>
+            <Field label="TVA sur les debits" required>
               <SelectInput value={quoteForm.taxDebitOption ? "true" : "false"} onChange={(event) => setQuoteForm({ ...quoteForm, taxDebitOption: event.target.value === "true" })}>
                 <option value="false">Non</option>
                 <option value="true">Oui</option>
               </SelectInput>
             </Field>
-            <Field label="Conditions de reglement" optional><TextArea value={quoteForm.paymentTermsText} onChange={(event) => setQuoteForm({ ...quoteForm, paymentTermsText: event.target.value })} /></Field>
-            <Field label="Mentions" optional><TextArea value={quoteForm.legalNotice} onChange={(event) => setQuoteForm({ ...quoteForm, legalNotice: event.target.value })} /></Field>
+            <Field label="Conditions de reglement" optional hint="Si vide, les conditions du profil entreprise sont appliquees."><TextArea value={quoteForm.paymentTermsText} onChange={(event) => setQuoteForm({ ...quoteForm, paymentTermsText: event.target.value })} /></Field>
+            <Field label="Mentions" optional hint="Assurance, reserves, validite ou mentions propres a ce devis."><TextArea value={quoteForm.legalNotice} onChange={(event) => setQuoteForm({ ...quoteForm, legalNotice: event.target.value })} /></Field>
           </FormSection>
         </div>
       </Modal>
@@ -685,56 +820,54 @@ export function QuotesPage() {
         open={editQuoteModal}
         title="Modifier le devis"
         description="Corrige les informations principales sans toucher aux lignes deja chiffrees."
-        onClose={() => setEditQuoteModal(false)}
+        onClose={() => void closeEditQuoteModal()}
         size="lg"
         footer={
           <>
-            <Button variant="outline" onClick={() => setEditQuoteModal(false)}>
-              Annuler
-            </Button>
-            <Button disabled={pending === "quote-details"} onClick={() => void saveQuoteDetails()}>
-              <Edit3 className="h-4 w-4" />
-              {pending === "quote-details" ? "Enregistrement..." : "Enregistrer"}
+            <Button variant="outline" onClick={() => void closeEditQuoteModal()}>
+              Fermer
             </Button>
           </>
         }
       >
-        <div className="form-grid">
-          <FormSection title="Base du devis" description="Le titre et la TVA structurent le document.">
-            <Field label="Client" optional>
-              <SelectInput value={editQuoteForm.clientId} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, clientId: event.target.value })}>
+        <div className="form-grid" onBlurCapture={autoSaveQuoteDetailsOnBlur}>
+          {error ? <Notice kind="error">{error}</Notice> : null}
+          <Notice kind="warning">Le client, l'objet et la TVA structurent le devis. Les mentions vides reprennent le profil entreprise quand un defaut existe.</Notice>
+          <FormSection title="Base du devis" description="Le client, l'objet, la validite et la TVA structurent le document.">
+            <Field label="Client" legalRequired>
+              <SelectInput required value={editQuoteForm.clientId} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, clientId: event.target.value })}>
                 <option value="">Client non defini</option>
                 {(clients ?? []).map((client) => (
                   <option key={client._id} value={client._id}>{formatClientName(client)}</option>
                 ))}
               </SelectInput>
             </Field>
-            <Field label="Titre" required><TextInput value={editQuoteForm.title} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, title: event.target.value })} /></Field>
-            <Field label="TVA (%)" required><NumberInput min={0} max={100} step="0.01" value={editQuoteForm.vatRate} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, vatRate: Number(event.target.value) })} /></Field>
+            <Field label="Titre / objet" required><TextInput required value={editQuoteForm.title} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, title: event.target.value })} /></Field>
+            <Field label="TVA (%)" required><NumberInput required min={0} max={100} step="0.01" value={editQuoteForm.vatRate} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, vatRate: Number(event.target.value) })} /></Field>
             <Field label="Valable jusqu'au" optional><TextInput type="date" value={editQuoteForm.validUntil} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, validUntil: event.target.value })} /></Field>
           </FormSection>
 
-          <FormSection title="Chantier" description="Visible sur le document client si renseigne.">
+          <FormSection title="Chantier" description="Visible sur le document client.">
             <Field label="Description chantier" optional><TextArea value={editQuoteForm.siteDescription} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, siteDescription: event.target.value })} /></Field>
             <Field label="Adresse chantier / livraison" optional><TextArea value={editQuoteForm.deliveryAddress} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, deliveryAddress: event.target.value })} /></Field>
           </FormSection>
 
           <FormSection title="Mentions avancees" description="Surcharge les valeurs du profil entreprise uniquement si ce devis est particulier.">
-            <Field label="Nature operation" optional>
+            <Field label="Nature operation" legalRequired>
               <SelectInput value={editQuoteForm.operationType} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, operationType: event.target.value as typeof editQuoteForm.operationType })}>
                 <option value="mixed">Biens et services</option>
                 <option value="services">Services</option>
                 <option value="goods">Livraison de biens</option>
               </SelectInput>
             </Field>
-            <Field label="TVA sur les debits" optional>
+            <Field label="TVA sur les debits" required>
               <SelectInput value={editQuoteForm.taxDebitOption ? "true" : "false"} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, taxDebitOption: event.target.value === "true" })}>
                 <option value="false">Non</option>
                 <option value="true">Oui</option>
               </SelectInput>
             </Field>
-            <Field label="Conditions de reglement" optional><TextArea value={editQuoteForm.paymentTermsText} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, paymentTermsText: event.target.value })} /></Field>
-            <Field label="Penalites / retard" optional><TextArea value={editQuoteForm.latePenaltyText} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, latePenaltyText: event.target.value })} /></Field>
+            <Field label="Conditions de reglement" optional hint="Si vide, les conditions du profil entreprise sont appliquees."><TextArea value={editQuoteForm.paymentTermsText} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, paymentTermsText: event.target.value })} /></Field>
+            <Field label="Penalites / retard" optional hint="Si vide, les penalites du profil entreprise sont appliquees."><TextArea value={editQuoteForm.latePenaltyText} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, latePenaltyText: event.target.value })} /></Field>
             <Field label="Mentions" optional><TextArea value={editQuoteForm.legalNotice} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, legalNotice: event.target.value })} /></Field>
             <Field label="Notes internes" optional><TextArea value={editQuoteForm.notes} onChange={(event) => setEditQuoteForm({ ...editQuoteForm, notes: event.target.value })} /></Field>
           </FormSection>
@@ -744,9 +877,9 @@ export function QuotesPage() {
       <Modal
         open={quickClientModal}
         title="Client rapide"
-        description="Ajoute le minimum utile pour continuer le devis. La fiche client pourra etre completee plus tard."
+        description="Ajoute les informations utiles au devis. La fiche client pourra etre completee plus tard."
         onClose={() => setQuickClientModal(false)}
-        size="md"
+        size="lg"
         footer={
           <>
             <Button variant="outline" onClick={() => setQuickClientModal(false)}>
@@ -760,11 +893,47 @@ export function QuotesPage() {
         }
       >
         <div className="form-grid">
-          <Field label="Nom" required><TextInput value={quickClientForm.name} onChange={(event) => setQuickClientForm({ ...quickClientForm, name: event.target.value })} /></Field>
+          {error ? <Notice kind="error">{error}</Notice> : null}
+          <Notice kind="warning">Le formulaire s'adapte au type client. Pour un professionnel, saisis le SIRET: le SIREN est calcule automatiquement.</Notice>
+          <Field label="Type client" required>
+            <SelectInput value={quickClientForm.customerType} onChange={(event) => setQuickClientType(event.target.value as typeof quickClientForm.customerType)}>
+              <option value="individual">Particulier</option>
+              <option value="business">Entreprise</option>
+              <option value="public">Administration</option>
+            </SelectInput>
+          </Field>
+          {isQuickProfessionalClient ? (
+            <Field label={isQuickBusinessClient ? "Societe" : "Organisme"} legalRequired>
+              <TextInput required value={quickClientForm.companyName} onChange={(event) => setQuickClientForm({ ...quickClientForm, companyName: event.target.value })} />
+            </Field>
+          ) : null}
+          <Field label={isQuickProfessionalClient ? "Contact - nom" : "Nom"} legalRequired><TextInput required value={quickClientForm.name} onChange={(event) => setQuickClientForm({ ...quickClientForm, name: event.target.value })} /></Field>
           <Field label="Prenom" optional><TextInput value={quickClientForm.firstName} onChange={(event) => setQuickClientForm({ ...quickClientForm, firstName: event.target.value })} /></Field>
-          <Field label="Societe" optional><TextInput value={quickClientForm.companyName} onChange={(event) => setQuickClientForm({ ...quickClientForm, companyName: event.target.value })} /></Field>
+          {isQuickProfessionalClient ? (
+            <>
+              <Field label="SIRET" legalRequired hint="Le SIREN est calcule automatiquement avec les 9 premiers chiffres."><TextInput required value={quickClientForm.siret} onChange={(event) => setQuickClientSiret(event.target.value)} /></Field>
+              <Field label="SIREN calcule" optional><TextInput readOnly value={deriveSiren(quickClientForm.siret) ?? quickClientForm.siren} /></Field>
+            </>
+          ) : null}
+          {isQuickBusinessClient ? (
+            <>
+              <Field label="TVA intracommunautaire" required>
+                <SelectInput value={quickClientForm.hasVatNumber ? "yes" : "no"} onChange={(event) => setQuickClientHasVatNumber(event.target.value === "yes")}>
+                  <option value="no">Non / non applicable</option>
+                  <option value="yes">Oui</option>
+                </SelectInput>
+              </Field>
+              {quickClientForm.hasVatNumber ? (
+                <Field label="Numero TVA intracom." legalRequired><TextInput required value={quickClientForm.vatNumber} onChange={(event) => setQuickClientForm({ ...quickClientForm, vatNumber: event.target.value })} /></Field>
+              ) : null}
+            </>
+          ) : null}
           <Field label="Telephone" optional><TextInput value={quickClientForm.phone} onChange={(event) => setQuickClientForm({ ...quickClientForm, phone: event.target.value })} /></Field>
           <Field label="Email" optional><TextInput value={quickClientForm.email} onChange={(event) => setQuickClientForm({ ...quickClientForm, email: event.target.value })} /></Field>
+          <Field label="Adresse" legalRequired><TextInput required value={quickClientForm.address} onChange={(event) => setQuickClientForm({ ...quickClientForm, address: event.target.value })} /></Field>
+          <Field label="Code postal" legalRequired><TextInput required value={quickClientForm.postalCode} onChange={(event) => setQuickClientForm({ ...quickClientForm, postalCode: event.target.value })} /></Field>
+          <Field label="Ville" legalRequired><TextInput required value={quickClientForm.city} onChange={(event) => setQuickClientForm({ ...quickClientForm, city: event.target.value })} /></Field>
+          <Field label="Pays" legalRequired><TextInput required value={quickClientForm.country} onChange={(event) => setQuickClientForm({ ...quickClientForm, country: event.target.value })} /></Field>
         </div>
       </Modal>
 
@@ -774,13 +943,31 @@ export function QuotesPage() {
         materials={materials ?? []}
         services={services ?? []}
         pending={pending === "edit-line"}
-        onClose={() => {
-          setEditLineModal(false);
-          setEditingLineId(null);
-        }}
+        onClose={closeEditLineModal}
         onChange={setEditLineForm}
-        onSave={saveEditedLine}
+        onAutoSave={() => void saveEditedLine(false)}
       />
+
+      <Modal
+        open={previewModal && !!selectedQuote}
+        title="Apercu du devis"
+        description={selectedQuote ? `${selectedQuote.quote.number} - document client` : undefined}
+        onClose={() => setPreviewModal(false)}
+        size="xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPreviewModal(false)}>Fermer</Button>
+            {selectedQuote ? (
+              <Button onClick={() => printQuoteDocument(selectedQuote.quote.number)}>
+                <Printer className="h-4 w-4" />
+                Imprimer / PDF
+              </Button>
+            ) : null}
+          </>
+        }
+      >
+        {selectedQuote ? <QuoteDocument quoteBundle={selectedQuote} organization={organization} /> : null}
+      </Modal>
 
       <Modal
         open={quickMaterialModal}
@@ -819,9 +1006,11 @@ export function QuotesPage() {
               <span>Arrondi au lot entier dans le devis.</span>
             </button>
           </div>
-          <Field label="Quantite par achat" optional hint="Ex: poutres par 2, boite de 200 vis.">
-            <NumberInput min={0} step="0.01" disabled={quickMaterialForm.divisible} value={quickMaterialForm.quantityPerLot} onChange={(event) => setQuickMaterialForm({ ...quickMaterialForm, quantityPerLot: event.target.value })} />
-          </Field>
+          {!quickMaterialForm.divisible ? (
+            <Field label="Quantite contenue par achat" required hint="Ex: lot de 2 poutres => 2. Boite de 200 vis => 200.">
+              <NumberInput min={0} step="0.01" value={quickMaterialForm.quantityPerLot} onChange={(event) => setQuickMaterialForm({ ...quickMaterialForm, quantityPerLot: event.target.value })} />
+            </Field>
+          ) : null}
         </div>
       </Modal>
     </div>
@@ -923,27 +1112,55 @@ function QuoteLinesTable({
   onEdit: (item: Doc<"quoteItems">) => void;
   onDelete: (itemId: Id<"quoteItems">) => void;
 }) {
+  const [sort, setSort] = useState<{ key: QuoteLineSortKey; direction: "asc" | "desc" } | null>(null);
+  const sortedItems = useMemo(() => {
+    if (!sort) {
+      return items;
+    }
+    return [...items].sort((left, right) => {
+      const leftMaterial = left.materialId ? materials.find((entry) => entry._id === left.materialId) ?? null : null;
+      const rightMaterial = right.materialId ? materials.find((entry) => entry._id === right.materialId) ?? null : null;
+      return compareLineSortValues(
+        quoteLineSortValue(left, leftMaterial, sort.key),
+        quoteLineSortValue(right, rightMaterial, sort.key),
+        sort.direction,
+      );
+    });
+  }, [items, materials, sort]);
+
+  function toggleSort(key: QuoteLineSortKey) {
+    setSort((current) => {
+      if (current?.key !== key) {
+        return { key, direction: "asc" };
+      }
+      if (current.direction === "asc") {
+        return { key, direction: "desc" };
+      }
+      return null;
+    });
+  }
+
   if (items.length === 0) {
     return <EmptyState title="Aucune ligne" />;
   }
 
   return (
-    <div className="table-wrap">
+    <div className="table-wrap quote-lines-wrap">
       <table className="data-table quote-lines-table">
         <thead>
           <tr>
-            <th>Designation</th>
-            <th>Besoin</th>
-            <th>Avec pertes</th>
-            <th>Achete</th>
-            <th>Perte</th>
-            <th>Cout reel</th>
-            <th>Total HT</th>
+            <SortableQuoteLineHeader label="Designation" sortKey="description" activeSort={sort} onSort={toggleSort} />
+            <SortableQuoteLineHeader label="Besoin" sortKey="quantity" activeSort={sort} onSort={toggleSort} />
+            <SortableQuoteLineHeader label="Avec pertes" sortKey="quantityWithWaste" activeSort={sort} onSort={toggleSort} />
+            <SortableQuoteLineHeader label="Achete" sortKey="purchased" activeSort={sort} onSort={toggleSort} />
+            <SortableQuoteLineHeader label="Perte" sortKey="waste" activeSort={sort} onSort={toggleSort} />
+            <SortableQuoteLineHeader label="Cout reel" sortKey="realCost" activeSort={sort} onSort={toggleSort} />
+            <SortableQuoteLineHeader label="Total HT" sortKey="total" activeSort={sort} onSort={toggleSort} />
             <th className="actions-cell" />
           </tr>
         </thead>
         <tbody>
-          {groupQuoteItems(items).map((group) => (
+          {groupQuoteItems(sortedItems).map((group) => (
             <Fragment key={group.section}>
               <tr className="quote-section-row">
                 <td colSpan={8}>
@@ -994,6 +1211,72 @@ function QuoteLinesTable({
   );
 }
 
+type QuoteLineSortKey = "description" | "quantity" | "quantityWithWaste" | "purchased" | "waste" | "realCost" | "total";
+
+function SortableQuoteLineHeader({
+  label,
+  sortKey,
+  activeSort,
+  onSort,
+}: {
+  label: string;
+  sortKey: QuoteLineSortKey;
+  activeSort: { key: QuoteLineSortKey; direction: "asc" | "desc" } | null;
+  onSort: (key: QuoteLineSortKey) => void;
+}) {
+  const active = activeSort?.key === sortKey;
+  return (
+    <th aria-sort={active ? (activeSort.direction === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" className="sort-header" onClick={() => onSort(sortKey)}>
+        <span>{label}</span>
+        <i>{active ? (activeSort.direction === "asc" ? "↑" : "↓") : "↕"}</i>
+      </button>
+    </th>
+  );
+}
+
+function quoteLineSortValue(item: Doc<"quoteItems">, material: Material | null, key: QuoteLineSortKey) {
+  switch (key) {
+    case "description":
+      return item.description;
+    case "quantity":
+      return item.quantity;
+    case "quantityWithWaste":
+      return item.quantityWithWaste ?? item.quantity;
+    case "purchased":
+      return item.purchasedQuantity ?? item.quantity;
+    case "waste":
+      return item.wasteQuantity ?? 0;
+    case "realCost":
+      return item.realCostHt ?? item.totalHt;
+    case "total":
+      return item.totalHt;
+    default:
+      return material?.name ?? "";
+  }
+}
+
+function compareLineSortValues(
+  left: string | number | null | undefined,
+  right: string | number | null | undefined,
+  direction: "asc" | "desc",
+) {
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (left == null && right == null) {
+    return 0;
+  }
+  if (left == null) {
+    return 1;
+  }
+  if (right == null) {
+    return -1;
+  }
+  if (typeof left === "number" && typeof right === "number") {
+    return (left - right) * multiplier;
+  }
+  return String(left).localeCompare(String(right), "fr-FR", { numeric: true, sensitivity: "base" }) * multiplier;
+}
+
 function LineEditModal({
   open,
   form,
@@ -1002,20 +1285,23 @@ function LineEditModal({
   pending,
   onClose,
   onChange,
-  onSave,
+  onAutoSave,
 }: {
   open: boolean;
   form: typeof emptyLine;
   materials: Material[];
   services: Service[];
   pending: boolean;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
   onChange: (form: typeof emptyLine) => void;
-  onSave: () => void;
+  onAutoSave: () => void;
 }) {
   const selectedMaterial = materials.find((material) => material._id === form.materialId) ?? null;
   const selectedService = services.find((service) => service._id === form.serviceId) ?? null;
   const preview = calculatePreview(form, selectedMaterial, selectedService);
+  const autoSaveLineOnBlur = useBlurAutosave<HTMLDivElement>(() => {
+    onAutoSave();
+  }, { enabled: open });
 
   return (
     <Modal
@@ -1026,17 +1312,13 @@ function LineEditModal({
       size="lg"
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button disabled={pending} onClick={() => void onSave()}>
-            <Edit3 className="h-4 w-4" />
-            {pending ? "Enregistrement..." : "Enregistrer la ligne"}
+          <Button variant="outline" disabled={pending} onClick={() => void onClose()}>
+            Fermer
           </Button>
         </>
       }
     >
-      <div className="form-grid">
+      <div className="form-grid" onBlurCapture={autoSaveLineOnBlur}>
         <Field label="Type" required>
           <SelectInput value={form.kind} onChange={(event) => onChange({ ...emptyLine, kind: event.target.value as LineKind })}>
             <option value="material">Materiau</option>
@@ -1136,8 +1418,7 @@ function QuoteDocument({
   const vatAmount = Math.max(0, quote.totalTtc - quote.totalHt);
 
   return (
-    <Panel title="Apercu PDF" description="Document client propre, sans les couts internes ni le detail des pertes.">
-      <article id="quote-print-document" className="quote-document">
+    <article id="quote-print-document" className="quote-document">
         <header className="quote-document-header">
           <div>
             <span className="quote-document-kicker">Devis</span>
@@ -1164,6 +1445,7 @@ function QuoteDocument({
             {clientAddress ? <p>{clientAddress}</p> : null}
             {client?.email ? <p>{client.email}</p> : null}
             {client?.siren ? <p>SIREN: {client.siren}</p> : null}
+            {client?.siret ? <p>SIRET: {client.siret}</p> : null}
             {client?.vatNumber ? <p>TVA: {client.vatNumber}</p> : null}
           </div>
           <div>
@@ -1295,8 +1577,7 @@ function QuoteDocument({
           <span>Bon pour accord</span>
           <span>{acceptanceText ?? "Date et signature client"}</span>
         </footer>
-      </article>
-    </Panel>
+    </article>
   );
 }
 

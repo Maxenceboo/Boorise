@@ -1,36 +1,52 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FormEvent } from "react";
-import { useState } from "react";
-import { Save } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "#convex/_generated/api";
-import { Button, Field, FormSection, Notice, NumberInput, PageHeader, Panel, SelectInput, TextArea, TextInput } from "@/components/ui/app";
+import { Field, FormSection, Notice, NumberInput, PageHeader, Panel, SelectInput, TextArea, TextInput } from "@/components/ui/app";
+import { useBlurAutosave } from "@/hooks/useBlurAutosave";
 import { formNumber, formOptionalString } from "@/lib/format";
 
 export function SettingsPage() {
   const current = useQuery(api.app.current);
   const updateOrganization = useMutation(api.app.updateOrganization);
   const organization = current?.organization;
-  const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [legalStructure, setLegalStructure] = useState<"individual" | "company">("individual");
+  const [vatMode, setVatMode] = useState<"taxable" | "exempt">("taxable");
+  const [hasRegister, setHasRegister] = useState(false);
+  const [hasProfessionalInsurance, setHasProfessionalInsurance] = useState(false);
+  const [hasConsumerMediator, setHasConsumerMediator] = useState(false);
+  const autoSaveOrganizationOnBlur = useBlurAutosave<HTMLFormElement>((form) => {
+    void saveOrganization(form, "auto");
+  }, { enabled: !!organization });
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
+  useEffect(() => {
+    if (!organization) {
+      return;
+    }
+    setLegalStructure(inferLegalStructure(organization.legalForm, organization.shareCapital));
+    setVatMode(organization.defaultVatRate === 0 || !!organization.taxExemptionText && !organization.vatNumber ? "exempt" : "taxable");
+    setHasRegister(!!organization.registerNumber || !!organization.registerCity);
+    setHasProfessionalInsurance(!!organization.professionalInsurance);
+    setHasConsumerMediator(!!organization.mediatorInfo);
+  }, [organization]);
+
+  async function saveOrganization(form: HTMLFormElement, mode: "auto" | "manual") {
     setNotice(null);
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(form);
 
     try {
       await updateOrganization({
         name: String(data.get("name") ?? ""),
         legalName: formOptionalString(data.get("legalName")),
-        legalForm: formOptionalString(data.get("legalForm")),
-        shareCapital: formOptionalString(data.get("shareCapital")),
+        legalForm: legalStructure === "company" ? formOptionalString(data.get("legalForm")) : undefined,
+        shareCapital: legalStructure === "company" ? formOptionalString(data.get("shareCapital")) : undefined,
         siren: formOptionalString(data.get("siren")),
         siret: formOptionalString(data.get("siret")),
-        vatNumber: formOptionalString(data.get("vatNumber")),
+        vatNumber: vatMode === "taxable" ? formOptionalString(data.get("vatNumber")) : undefined,
         apeCode: formOptionalString(data.get("apeCode")),
-        registerNumber: formOptionalString(data.get("registerNumber")),
-        registerCity: formOptionalString(data.get("registerCity")),
+        registerNumber: hasRegister ? formOptionalString(data.get("registerNumber")) : undefined,
+        registerCity: hasRegister ? formOptionalString(data.get("registerCity")) : undefined,
         email: formOptionalString(data.get("email")),
         phone: formOptionalString(data.get("phone")),
         address: formOptionalString(data.get("address")),
@@ -38,7 +54,7 @@ export function SettingsPage() {
         city: formOptionalString(data.get("city")),
         country: formOptionalString(data.get("country")),
         logoUrl: formOptionalString(data.get("logoUrl")),
-        defaultVatRate: formNumber(data.get("defaultVatRate"), 20),
+        defaultVatRate: vatMode === "taxable" ? formNumber(data.get("defaultVatRate"), 20) : 0,
         defaultHourlyRate: formNumber(data.get("defaultHourlyRate"), 0),
         defaultMarginRate: formNumber(data.get("defaultMarginRate"), 0),
         quotePrefix: formOptionalString(data.get("quotePrefix")),
@@ -48,22 +64,25 @@ export function SettingsPage() {
         paymentTermsText: formOptionalString(data.get("paymentTermsText")),
         latePenaltyText: formOptionalString(data.get("latePenaltyText")),
         discountTermsText: formOptionalString(data.get("discountTermsText")),
-        taxExemptionText: formOptionalString(data.get("taxExemptionText")),
+        taxExemptionText: vatMode === "exempt" ? formOptionalString(data.get("taxExemptionText")) : undefined,
         quotePricingText: formOptionalString(data.get("quotePricingText")),
         legalNotice: formOptionalString(data.get("legalNotice")),
         bankDetails: formOptionalString(data.get("bankDetails")),
         defaultOperationType: String(data.get("defaultOperationType") ?? "mixed") as "goods" | "services" | "mixed",
-        taxDebitOption: String(data.get("taxDebitOption") ?? "false") === "true",
-        professionalInsurance: formOptionalString(data.get("professionalInsurance")),
-        mediatorInfo: formOptionalString(data.get("mediatorInfo")),
+        taxDebitOption: vatMode === "taxable" && String(data.get("taxDebitOption") ?? "false") === "true",
+        professionalInsurance: hasProfessionalInsurance ? formOptionalString(data.get("professionalInsurance")) : undefined,
+        mediatorInfo: hasConsumerMediator ? formOptionalString(data.get("mediatorInfo")) : undefined,
         acceptanceText: formOptionalString(data.get("acceptanceText")),
       });
-      setNotice({ kind: "success", message: "Profil entreprise enregistre." });
+      setNotice({ kind: "success", message: mode === "auto" ? "Sauvegarde automatique effectuee." : "Profil entreprise enregistre." });
     } catch (err) {
       setNotice({ kind: "error", message: err instanceof Error ? err.message : "Enregistrement impossible" });
-    } finally {
-      setPending(false);
     }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveOrganization(event.currentTarget, "manual");
   }
 
   return (
@@ -89,71 +108,105 @@ export function SettingsPage() {
         {!organization ? (
           <div className="empty-state"><strong>Chargement...</strong></div>
         ) : (
-          <form className="company-form" onSubmit={handleSubmit}>
+          <form className="company-form" onBlurCapture={autoSaveOrganizationOnBlur} onSubmit={handleSubmit}>
             {notice ? <Notice kind={notice.kind}>{notice.message}</Notice> : null}
-            <FormSection title="Essentiel" description="Minimum conseille pour que les devis et factures aient une identite claire.">
-              <Field label="Nom entreprise" required><TextInput name="name" defaultValue={organization.name} required /></Field>
-              <Field label="Raison sociale" optional><TextInput name="legalName" defaultValue={organization.legalName ?? ""} /></Field>
+            <Notice kind="warning">
+              Les champs changent selon le statut, le regime TVA et les obligations que tu actives.
+            </Notice>
+            <FormSection title="Essentiel" description="Identite de l'emetteur affichee sur les devis et factures.">
+              <Field label="Nom commercial" required><TextInput name="name" defaultValue={organization.name} required /></Field>
+              <Field label="Raison sociale" optional hint="A renseigner si differente du nom commercial."><TextInput name="legalName" defaultValue={organization.legalName ?? ""} /></Field>
               <Field label="Logo URL" optional><TextInput name="logoUrl" defaultValue={organization.logoUrl ?? ""} /></Field>
-              <Field label="Email" optional><TextInput name="email" type="email" defaultValue={organization.email ?? ""} /></Field>
-              <Field label="Telephone" optional><TextInput name="phone" defaultValue={organization.phone ?? ""} /></Field>
+              <Field label="Email" optional hint="Recommande pour les documents client."><TextInput name="email" type="email" defaultValue={organization.email ?? ""} /></Field>
+              <Field label="Telephone" optional hint="Recommande pour les documents client."><TextInput name="phone" defaultValue={organization.phone ?? ""} /></Field>
             </FormSection>
 
-            <FormSection title="Identification legale" description="A completer selon ton statut. Ces informations apparaissent sur les documents client.">
-              <Field label="Forme juridique" optional><TextInput name="legalForm" defaultValue={organization.legalForm ?? ""} placeholder="EI, SASU, SARL..." /></Field>
-              <Field label="Capital social" optional><TextInput name="shareCapital" defaultValue={organization.shareCapital ?? ""} placeholder="Ex: 5 000 EUR" /></Field>
-              <Field label="SIREN" optional><TextInput name="siren" defaultValue={organization.siren ?? ""} /></Field>
-              <Field label="SIRET" optional><TextInput name="siret" defaultValue={organization.siret ?? ""} /></Field>
-              <Field label="Numero TVA" optional><TextInput name="vatNumber" defaultValue={organization.vatNumber ?? ""} /></Field>
+            <FormSection title="Identification legale" description="Informations d'immatriculation a reprendre dans les documents commerciaux.">
+              <Field label="Statut de l'entreprise" required>
+                <SelectInput value={legalStructure} onChange={(event) => setLegalStructure(event.target.value as typeof legalStructure)}>
+                  <option value="individual">Entreprise individuelle / micro</option>
+                  <option value="company">Societe</option>
+                </SelectInput>
+              </Field>
+              {legalStructure === "company" ? (
+                <>
+                  <Field label="Forme juridique" legalRequired><TextInput name="legalForm" defaultValue={organization.legalForm ?? ""} placeholder="SASU, SARL, EURL..." /></Field>
+                  <Field label="Capital social" legalRequired><TextInput name="shareCapital" defaultValue={organization.shareCapital ?? ""} placeholder="Ex: 5 000 EUR" /></Field>
+                </>
+              ) : null}
+              <Field label="SIREN" legalRequired><TextInput name="siren" defaultValue={organization.siren ?? ""} /></Field>
+              <Field label="SIRET" legalRequired><TextInput name="siret" defaultValue={organization.siret ?? ""} /></Field>
               <Field label="Code APE / NAF" optional><TextInput name="apeCode" defaultValue={organization.apeCode ?? ""} /></Field>
-              <Field label="RCS / RM" optional><TextInput name="registerNumber" defaultValue={organization.registerNumber ?? ""} placeholder="Ex: RCS Paris 123 456 789" /></Field>
-              <Field label="Ville greffe / registre" optional><TextInput name="registerCity" defaultValue={organization.registerCity ?? ""} /></Field>
+              <Field label="Immatriculation RCS / RM" required>
+                <SelectInput value={hasRegister ? "yes" : "no"} onChange={(event) => setHasRegister(event.target.value === "yes")}>
+                  <option value="no">Non / non applicable</option>
+                  <option value="yes">Oui</option>
+                </SelectInput>
+              </Field>
+              {hasRegister ? (
+                <>
+                  <Field label="RCS / RM" legalRequired><TextInput name="registerNumber" defaultValue={organization.registerNumber ?? ""} placeholder="Ex: RCS Paris 123 456 789" /></Field>
+                  <Field label="Ville greffe / registre" legalRequired><TextInput name="registerCity" defaultValue={organization.registerCity ?? ""} /></Field>
+                </>
+              ) : null}
             </FormSection>
 
-            <FormSection title="Adresse" description="Adresse affichee dans l'en-tete des devis et factures.">
-              <Field label="Adresse" optional><TextInput name="address" defaultValue={organization.address ?? ""} /></Field>
-              <Field label="Code postal" optional><TextInput name="postalCode" defaultValue={organization.postalCode ?? ""} /></Field>
-              <Field label="Ville" optional><TextInput name="city" defaultValue={organization.city ?? ""} /></Field>
-              <Field label="Pays" optional><TextInput name="country" defaultValue={organization.country ?? "France"} /></Field>
+            <FormSection title="Adresse" description="Adresse du siege ou de l'etablissement emetteur affichee dans l'en-tete des documents.">
+              <Field label="Adresse" legalRequired><TextInput name="address" defaultValue={organization.address ?? ""} /></Field>
+              <Field label="Code postal" legalRequired><TextInput name="postalCode" defaultValue={organization.postalCode ?? ""} /></Field>
+              <Field label="Ville" legalRequired><TextInput name="city" defaultValue={organization.city ?? ""} /></Field>
+              <Field label="Pays" legalRequired><TextInput name="country" defaultValue={organization.country ?? "France"} /></Field>
             </FormSection>
 
             <FormSection title="Parametres documents" description="Valeurs reprises par defaut dans les nouveaux devis et factures.">
-              <Field label="TVA par defaut (%)" required><NumberInput name="defaultVatRate" step="0.01" defaultValue={organization.defaultVatRate} /></Field>
+              <Field label="Regime TVA" required>
+                <SelectInput value={vatMode} onChange={(event) => setVatMode(event.target.value as typeof vatMode)}>
+                  <option value="taxable">Assujetti a la TVA</option>
+                  <option value="exempt">Franchise / TVA non applicable</option>
+                </SelectInput>
+              </Field>
+              {vatMode === "taxable" ? (
+                <>
+                  <Field label="TVA par defaut (%)" required><NumberInput name="defaultVatRate" step="0.01" defaultValue={organization.defaultVatRate} /></Field>
+                  <Field label="Numero TVA" legalRequired><TextInput name="vatNumber" defaultValue={organization.vatNumber ?? ""} /></Field>
+                  <Field label="TVA sur les debits" required>
+                    <SelectInput name="taxDebitOption" defaultValue={organization.taxDebitOption ? "true" : "false"}>
+                      <option value="false">Non</option>
+                      <option value="true">Oui</option>
+                    </SelectInput>
+                  </Field>
+                </>
+              ) : (
+                <Field label="Franchise TVA" legalRequired>
+                  <TextArea name="taxExemptionText" defaultValue={organization.taxExemptionText ?? ""} placeholder="Ex: TVA non applicable, art. 293 B du CGI." />
+                </Field>
+              )}
               <Field label="Taux horaire defaut" optional><NumberInput name="defaultHourlyRate" step="0.01" defaultValue={organization.defaultHourlyRate ?? 0} /></Field>
               <Field label="Marge par defaut (%)" optional><NumberInput name="defaultMarginRate" step="0.01" defaultValue={organization.defaultMarginRate ?? 0} /></Field>
               <Field label="Prefixe devis" optional><TextInput name="quotePrefix" defaultValue={organization.quotePrefix ?? "D"} /></Field>
               <Field label="Prefixe factures" optional><TextInput name="invoicePrefix" defaultValue={organization.invoicePrefix ?? "F"} /></Field>
-              <Field label="Delai paiement (jours)" optional><NumberInput name="paymentTermsDays" defaultValue={organization.paymentTermsDays ?? 30} /></Field>
-              <Field label="Validite devis (jours)" optional><NumberInput name="quoteValidityDays" defaultValue={organization.quoteValidityDays ?? 30} /></Field>
-              <Field label="Nature operation par defaut" optional>
+              <Field label="Delai paiement (jours)" legalRequired><NumberInput name="paymentTermsDays" defaultValue={organization.paymentTermsDays ?? 30} /></Field>
+              <Field label="Validite devis (jours)" legalRequired><NumberInput name="quoteValidityDays" defaultValue={organization.quoteValidityDays ?? 30} /></Field>
+              <Field label="Nature operation par defaut" legalRequired>
                 <SelectInput name="defaultOperationType" defaultValue={organization.defaultOperationType ?? "mixed"}>
                   <option value="mixed">Biens et services</option>
                   <option value="services">Services</option>
                   <option value="goods">Livraison de biens</option>
                 </SelectInput>
               </Field>
-              <Field label="TVA sur les debits" optional>
-                <SelectInput name="taxDebitOption" defaultValue={organization.taxDebitOption ? "true" : "false"}>
-                  <option value="false">Non</option>
-                  <option value="true">Oui</option>
-                </SelectInput>
-              </Field>
             </FormSection>
 
             <FormSection title="Mentions legales et paiement" description="Textes affiches en bas des devis et factures. Tu peux les laisser vides si non applicables.">
-              <Field label="Conditions de reglement" optional>
+              <Field label="Conditions de reglement" legalRequired>
                 <TextArea name="paymentTermsText" defaultValue={organization.paymentTermsText ?? ""} placeholder="Ex: acompte 30% a la commande, solde a reception." />
               </Field>
-              <Field label="Penalites / retard" optional>
+              <Field label="Penalites / retard" legalRequired>
                 <TextArea name="latePenaltyText" defaultValue={organization.latePenaltyText ?? ""} placeholder="Ex: penalites selon taux legal, indemnite forfaitaire 40 EUR." />
               </Field>
-              <Field label="Escompte" optional>
+              <Field label="Escompte" legalRequired>
                 <TextArea name="discountTermsText" defaultValue={organization.discountTermsText ?? ""} placeholder="Ex: Escompte pour paiement anticipe: neant." />
               </Field>
-              <Field label="Franchise TVA" optional>
-                <TextArea name="taxExemptionText" defaultValue={organization.taxExemptionText ?? ""} placeholder="Ex: TVA non applicable, art. 293 B du CGI." />
-              </Field>
-              <Field label="Prix du devis" optional>
+              <Field label="Prix du devis" legalRequired>
                 <TextArea name="quotePricingText" defaultValue={organization.quotePricingText ?? ""} placeholder="Ex: Devis gratuit." />
               </Field>
               <Field label="Mentions devis" optional>
@@ -162,23 +215,46 @@ export function SettingsPage() {
               <Field label="Coordonnees bancaires" optional>
                 <TextArea name="bankDetails" defaultValue={organization.bankDetails ?? ""} placeholder="IBAN, BIC, titulaire du compte..." />
               </Field>
-              <Field label="Assurance professionnelle / decennale" optional>
-                <TextArea name="professionalInsurance" defaultValue={organization.professionalInsurance ?? ""} placeholder="Assureur, contrat, zone geographique couverte..." />
+              <Field label="Assurance obligatoire" required>
+                <SelectInput value={hasProfessionalInsurance ? "yes" : "no"} onChange={(event) => setHasProfessionalInsurance(event.target.value === "yes")}>
+                  <option value="no">Non / non applicable</option>
+                  <option value="yes">Oui</option>
+                </SelectInput>
               </Field>
-              <Field label="Mediateur consommation" optional>
-                <TextArea name="mediatorInfo" defaultValue={organization.mediatorInfo ?? ""} placeholder="Nom et coordonnees du mediateur applicable aux consommateurs." />
+              {hasProfessionalInsurance ? (
+                <Field label="Assurance professionnelle / decennale" legalRequired>
+                  <TextArea name="professionalInsurance" defaultValue={organization.professionalInsurance ?? ""} placeholder="Assureur, contrat, zone geographique couverte..." />
+                </Field>
+              ) : null}
+              <Field label="Clients consommateurs" required>
+                <SelectInput value={hasConsumerMediator ? "yes" : "no"} onChange={(event) => setHasConsumerMediator(event.target.value === "yes")}>
+                  <option value="no">Non</option>
+                  <option value="yes">Oui</option>
+                </SelectInput>
               </Field>
+              {hasConsumerMediator ? (
+                <Field label="Mediateur consommation" legalRequired>
+                  <TextArea name="mediatorInfo" defaultValue={organization.mediatorInfo ?? ""} placeholder="Nom et coordonnees du mediateur applicable aux consommateurs." />
+                </Field>
+              ) : null}
               <Field label="Acceptation devis" optional>
                 <TextArea name="acceptanceText" defaultValue={organization.acceptanceText ?? ""} placeholder="Bon pour accord, date et signature..." />
               </Field>
             </FormSection>
-
-            <div>
-              <Button disabled={pending} type="submit"><Save className="h-4 w-4" />{pending ? "Enregistrement..." : "Enregistrer"}</Button>
-            </div>
           </form>
         )}
       </Panel>
     </div>
   );
+}
+
+function inferLegalStructure(legalForm: string | undefined, shareCapital: string | undefined): "individual" | "company" {
+  if (shareCapital?.trim()) {
+    return "company";
+  }
+  const normalized = legalForm?.trim().toLowerCase();
+  if (!normalized) {
+    return "individual";
+  }
+  return normalized.includes("ei") || normalized.includes("micro") || normalized.includes("auto") ? "individual" : "company";
 }

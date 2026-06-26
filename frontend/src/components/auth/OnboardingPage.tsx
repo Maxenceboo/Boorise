@@ -50,7 +50,7 @@ export function OnboardingPage() {
           <p>Cette entreprise isolera tes clients, materiaux, devis et factures.</p>
         </div>
 
-        <Field className="mt-6" label="Nom de l'entreprise">
+        <Field className="mt-6" label="Nom de l'entreprise" required>
           <TextInput name="name" placeholder="Atelier Martin" required />
         </Field>
 

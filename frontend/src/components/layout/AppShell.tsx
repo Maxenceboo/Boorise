@@ -3,31 +3,66 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import {
   Boxes,
-  BriefcaseBusiness,
+  BarChart3,
   Building2,
   FileCheck2,
   FileText,
   LayoutDashboard,
   LogOut,
   Menu,
-  Plus,
   UsersRound,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { api } from "#convex/_generated/api";
 import { Button, IconButton } from "@/components/ui/app";
 import { cn } from "@/lib/utils";
 
-const navigation = [
-  { to: "/dashboard", label: "Dashboard", description: "Vue generale", icon: LayoutDashboard },
-  { to: "/clients", label: "Clients", description: "CRM simple", icon: UsersRound },
-  { to: "/materiaux", label: "Materiaux", description: "Catalogue achats", icon: Boxes },
-  { to: "/prestations", label: "Prestations", description: "Main-d'oeuvre", icon: BriefcaseBusiness },
-  { to: "/devis", label: "Devis", description: "Chiffrage chantier", icon: FileText },
-  { to: "/factures", label: "Factures", description: "Suivi paiement", icon: FileCheck2 },
-  { to: "/parametres", label: "Entreprise", description: "Profil et defauts", icon: Building2 },
-];
+type NavItemConfig = {
+  to: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  aliases?: string[];
+};
+
+type NavSectionConfig = {
+  label: string;
+  items: NavItemConfig[];
+};
+
+const navSections: NavSectionConfig[] = [
+  {
+    label: "Vue d'ensemble",
+    items: [
+      { to: "/dashboard", label: "Dashboard", description: "Actions et priorites", icon: LayoutDashboard },
+      { to: "/stats", label: "Stats", description: "Indicateurs et graphiques", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Commerce",
+    items: [
+      { to: "/clients", label: "Clients", description: "CRM simple", icon: UsersRound },
+      { to: "/devis", label: "Devis", description: "Chiffrage chantier", icon: FileText },
+      { to: "/factures", label: "Factures", description: "Suivi paiement", icon: FileCheck2 },
+    ],
+  },
+  {
+    label: "Ressources",
+    items: [
+      { to: "/materiaux", label: "Catalogue", description: "Materiaux et prestations", icon: Boxes, aliases: ["/prestations"] },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { to: "/parametres", label: "Entreprise", description: "Profil et defauts", icon: Building2 },
+    ],
+  },
+] ;
+
+const navigation = navSections.flatMap((section) => section.items);
 
 export function AppShell() {
   const { signOut } = useAuthActions();
@@ -35,7 +70,7 @@ export function AppShell() {
   const current = useQuery(api.app.current);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
-  const active = navigation.find((item) => item.to === pathname) ?? navigation[0];
+  const active = navigation.find((item) => item.to === pathname || item.aliases?.includes(pathname)) ?? navigation[0];
 
   return (
     <div className="app-shell">
@@ -61,8 +96,8 @@ export function AppShell() {
           </div>
           <div className="flex items-center gap-2">
             <Button className="hidden md:inline-flex" size="sm" onClick={() => void navigate({ to: "/devis" })}>
-              <Plus className="h-4 w-4" />
-              Nouveau devis
+              <FileText className="h-4 w-4" />
+              Devis
             </Button>
             <Button className="hidden md:inline-flex" variant="outline" onClick={() => void signOut()}>
               <LogOut className="h-4 w-4" />
@@ -90,9 +125,6 @@ function Sidebar({
   pathname: string;
   onNavigate: () => void;
 }) {
-  const primaryNavigation = navigation.filter((item) => item.to !== "/parametres");
-  const secondaryNavigation = navigation.filter((item) => item.to === "/parametres");
-
   return (
     <aside className={cn("sidebar", className)}>
       <div className="brand-row">
@@ -107,19 +139,19 @@ function Sidebar({
       </div>
 
       <nav className="nav-list">
-        <p className="nav-section-label">Pilotage</p>
-        {primaryNavigation.map((item) => (
-          <NavItem key={item.to} item={item} pathname={pathname} onNavigate={onNavigate} />
-        ))}
-        <p className="nav-section-label mt-5">Reglages</p>
-        {secondaryNavigation.map((item) => (
-          <NavItem key={item.to} item={item} pathname={pathname} onNavigate={onNavigate} />
+        {navSections.map((section) => (
+          <div className="nav-section" key={section.label}>
+            <p className="nav-section-label">{section.label}</p>
+            {section.items.map((item) => (
+              <NavItem key={item.to} item={item} pathname={pathname} onNavigate={onNavigate} />
+            ))}
+          </div>
         ))}
       </nav>
 
       <div className="sidebar-note">
-        <strong>Calcul matiere</strong>
-        <p>Les pertes, lots et couts reels sont calcules dans chaque devis.</p>
+        <strong>Atelier de chiffrage</strong>
+        <p>Le catalogue alimente les devis: pertes, lots, achats reels et marges.</p>
       </div>
     </aside>
   );
@@ -130,12 +162,12 @@ function NavItem({
   pathname,
   onNavigate,
 }: {
-  item: (typeof navigation)[number];
+  item: NavItemConfig;
   pathname: string;
   onNavigate: () => void;
 }) {
   const Icon = item.icon;
-  const isActive = pathname === item.to;
+  const isActive = pathname === item.to || item.aliases?.includes(pathname);
   return (
     <Link key={item.to} to={item.to} onClick={onNavigate} className={cn("nav-link", isActive && "nav-link-active")}>
       <Icon className="nav-icon h-[18px] w-[18px]" />

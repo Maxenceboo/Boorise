@@ -5,7 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { useEffect, useId } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -144,6 +144,7 @@ export function Field({
   error,
   className,
   required,
+  legalRequired,
   optional,
   children,
 }: {
@@ -152,14 +153,23 @@ export function Field({
   error?: string;
   className?: string;
   required?: boolean;
+  legalRequired?: boolean;
   optional?: boolean;
   children: ReactNode;
 }) {
+  const badge = legalRequired
+    ? <b className="legal-required">Legal obligatoire</b>
+    : required
+      ? <b>Obligatoire</b>
+      : optional
+        ? <i>Facultatif</i>
+        : null;
+
   return (
     <label className={cn("field", className)}>
       <span className="field-label">
         <span>{label}</span>
-        {required ? <b>Obligatoire</b> : optional ? <i>Facultatif</i> : null}
+        {badge}
       </span>
       {children}
       {hint ? <small>{hint}</small> : null}
@@ -329,6 +339,8 @@ export function DataTable<T>({
   rowKey,
   onRowClick,
   selectedKey,
+  density = "comfortable",
+  loading = false,
 }: {
   rows: T[];
   columns: Array<{
@@ -336,30 +348,99 @@ export function DataTable<T>({
     header: string;
     className?: string;
     render: (row: T) => ReactNode;
+    sortValue?: (row: T) => string | number | boolean | null | undefined;
+    sortable?: boolean;
   }>;
   empty?: ReactNode;
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   selectedKey?: string | null;
+  density?: "compact" | "comfortable";
+  loading?: boolean;
 }) {
+  const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const sortedRows = useMemo(() => {
+    if (!sort) {
+      return rows;
+    }
+    const column = columns.find((entry) => entry.key === sort.key);
+    if (!column?.sortValue) {
+      return rows;
+    }
+    return [...rows].sort((left, right) => compareSortValues(column.sortValue!(left), column.sortValue!(right), sort.direction));
+  }, [columns, rows, sort]);
+
+  function toggleSort(column: { key: string; sortValue?: (row: T) => string | number | boolean | null | undefined; sortable?: boolean }) {
+    if (column.sortable === false || !column.sortValue) {
+      return;
+    }
+    setSort((current) => {
+      if (current?.key !== column.key) {
+        return { key: column.key, direction: "asc" };
+      }
+      if (current.direction === "asc") {
+        return { key: column.key, direction: "desc" };
+      }
+      return null;
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className={cn("table-wrap", `table-${density}`)}>
+        <table className="data-table data-table-loading" aria-busy="true">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column.key} className={column.className}>
+                  {column.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <tr key={rowIndex}>
+                {columns.map((column) => (
+                  <td key={column.key} className={column.className}>
+                    <span className="table-skeleton" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   if (rows.length === 0) {
     return <>{empty ?? <EmptyState title="Aucune donnee" />}</>;
   }
 
   return (
-    <div className="table-wrap">
+    <div className={cn("table-wrap", `table-${density}`)}>
       <table className="data-table">
         <thead>
           <tr>
-            {columns.map((column) => (
-              <th key={column.key} className={column.className}>
-                {column.header}
-              </th>
-            ))}
+            {columns.map((column) => {
+              const sortable = column.sortable !== false && !!column.sortValue;
+              const active = sort?.key === column.key;
+              return (
+                <th key={column.key} className={column.className} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : undefined}>
+                  {sortable ? (
+                    <button type="button" className="sort-header" onClick={() => toggleSort(column)}>
+                      <span>{column.header}</span>
+                      <i>{active ? (sort.direction === "asc" ? "↑" : "↓") : "↕"}</i>
+                    </button>
+                  ) : column.header}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {sortedRows.map((row) => {
             const key = rowKey(row);
             return (
               <tr
@@ -379,6 +460,29 @@ export function DataTable<T>({
       </table>
     </div>
   );
+}
+
+function compareSortValues(
+  left: string | number | boolean | null | undefined,
+  right: string | number | boolean | null | undefined,
+  direction: "asc" | "desc",
+) {
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (left == null && right == null) {
+    return 0;
+  }
+  if (left == null) {
+    return 1;
+  }
+  if (right == null) {
+    return -1;
+  }
+  if (typeof left === "number" && typeof right === "number") {
+    return (left - right) * multiplier;
+  }
+  const normalizedLeft = String(left).toLocaleLowerCase("fr-FR");
+  const normalizedRight = String(right).toLocaleLowerCase("fr-FR");
+  return normalizedLeft.localeCompare(normalizedRight, "fr-FR", { numeric: true, sensitivity: "base" }) * multiplier;
 }
 
 export function Notice({

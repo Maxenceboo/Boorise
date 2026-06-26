@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Check, Coins, Download, Mail, Printer, ReceiptText, Send, X } from "lucide-react";
 import { api } from "#convex/_generated/api";
 import type { Doc, Id } from "#convex/_generated/dataModel";
-import { Badge, Button, DataTable, EmptyState, Field, IconButton, Modal, Notice, PageHeader, Panel, TextInput } from "@/components/ui/app";
+import { Badge, Button, DataTable, EmptyState, Field, IconButton, Modal, Notice, PageHeader, Panel, SelectInput, TextInput } from "@/components/ui/app";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
@@ -37,6 +37,14 @@ const tones: Record<InvoiceStatus, "slate" | "indigo" | "emerald" | "amber" | "r
   void: "rose",
 };
 
+const invoiceStatusOrder: Record<InvoiceStatus, number> = {
+  draft: 1,
+  sent: 2,
+  overdue: 3,
+  paid: 4,
+  void: 5,
+};
+
 export function InvoicesPage() {
   const current = useQuery(api.app.current);
   const invoices = useQuery(api.invoices.list);
@@ -46,6 +54,7 @@ export function InvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Doc<"invoices"> | null>(null);
+  const [previewModal, setPreviewModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     paidAt: timestampToDateInput(Date.now()),
     paymentMethod: "Virement",
@@ -62,6 +71,7 @@ export function InvoicesPage() {
   }, [invoices]);
   const selectedInvoice = useQuery(api.invoices.get, selectedInvoiceId ? { invoiceId: selectedInvoiceId } : "skip");
   const organization = current?.organization ?? null;
+  const paymentNeedsReference = paymentForm.paymentMethod !== "Especes";
 
   useEffect(() => {
     if (!selectedInvoiceId && invoices?.[0]) {
@@ -101,7 +111,7 @@ export function InvoicesPage() {
         invoiceId: paymentInvoice._id,
         paidAt: dateInputToTimestamp(paymentForm.paidAt),
         paymentMethod: optional(paymentForm.paymentMethod),
-        paymentReference: optional(paymentForm.paymentReference),
+        paymentReference: paymentNeedsReference ? optional(paymentForm.paymentReference) : undefined,
       });
       setPaymentInvoice(null);
     } catch (err) {
@@ -184,29 +194,32 @@ export function InvoicesPage() {
       </div>
       <Panel>
         <DataTable
+          density="compact"
+          loading={invoices === undefined}
           rows={invoices ?? []}
           rowKey={(invoice) => invoice._id}
           selectedKey={selectedInvoiceId}
           empty={<EmptyState title="Aucune facture" description="Convertis un devis accepte en facture pour alimenter cette liste." />}
           columns={[
-            { key: "number", header: "Numero", render: (invoice) => (
+            { key: "number", header: "Numero", sortValue: (invoice) => invoice.number, render: (invoice) => (
               <button className="invoice-table-select" onClick={() => setSelectedInvoiceId(invoice._id)}>
                 <span>{invoice.number}</span>
                 <strong>{invoice.quote?.title ?? "Facture"}</strong>
               </button>
             ) },
-            { key: "client", header: "Client", render: (invoice) => formatClientName(invoice.client) },
-            { key: "status", header: "Statut", render: (invoice) => {
+            { key: "client", header: "Client", sortValue: (invoice) => formatClientName(invoice.client), render: (invoice) => formatClientName(invoice.client) },
+            { key: "status", header: "Statut", sortValue: (invoice) => invoiceStatusOrder[displayInvoiceStatus(invoice)], render: (invoice) => {
               const status = displayInvoiceStatus(invoice);
               return <Badge tone={tones[status]}>{labels[status]}</Badge>;
             } },
-            { key: "total", header: "Total TTC", render: (invoice) => formatCurrency(invoice.totalTtc) },
-            { key: "due", header: "Echeance", render: (invoice) => <DueDate invoice={invoice} /> },
-            { key: "paid", header: "Paiement", render: (invoice) => invoice.paidAt ? `${formatDate(invoice.paidAt)} - ${invoice.paymentMethod ?? "regle"}` : "-" },
+            { key: "total", header: "Total TTC", sortValue: (invoice) => invoice.totalTtc, render: (invoice) => formatCurrency(invoice.totalTtc) },
+            { key: "due", header: "Echeance", sortValue: (invoice) => invoice.dueDate, render: (invoice) => <DueDate invoice={invoice} /> },
+            { key: "paid", header: "Paiement", sortValue: (invoice) => invoice.paidAt ?? 0, render: (invoice) => invoice.paidAt ? `${formatDate(invoice.paidAt)} - ${invoice.paymentMethod ?? "regle"}` : "-" },
             {
               key: "actions",
               header: "",
               className: "actions-cell",
+              sortable: false,
               render: (invoice) => (
                 <div className="row-actions">
                   <IconButton disabled={pending === `${invoice._id}-sent`} label="Marquer envoyee" onClick={() => void setStatus(invoice._id, "sent")}><Send className="h-4 w-4" /></IconButton>
@@ -241,9 +254,9 @@ export function InvoicesPage() {
                 <span>{formatCurrency(selectedInvoice.invoice.totalHt)} HT</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => printInvoiceDocument(selectedInvoice.invoice.number)}>
+                <Button variant="outline" onClick={() => setPreviewModal(true)}>
                   <Printer className="h-4 w-4" />
-                  PDF
+                  Apercu
                 </Button>
                 <Button
                   variant="outline"
@@ -259,10 +272,30 @@ export function InvoicesPage() {
                 </Button>
               </div>
             </div>
-            <InvoiceDocument invoiceBundle={selectedInvoice} organization={organization} />
           </div>
         )}
       </Panel>
+
+      <Modal
+        open={previewModal && !!selectedInvoice}
+        title="Apercu de la facture"
+        description={selectedInvoice ? `${selectedInvoice.invoice.number} - document client` : undefined}
+        onClose={() => setPreviewModal(false)}
+        size="xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPreviewModal(false)}>Fermer</Button>
+            {selectedInvoice ? (
+              <Button onClick={() => printInvoiceDocument(selectedInvoice.invoice.number)}>
+                <Printer className="h-4 w-4" />
+                Imprimer / PDF
+              </Button>
+            ) : null}
+          </>
+        }
+      >
+        {selectedInvoice ? <InvoiceDocument invoiceBundle={selectedInvoice} organization={organization} /> : null}
+      </Modal>
 
       <Modal
         open={!!paymentInvoice}
@@ -280,9 +313,19 @@ export function InvoicesPage() {
         }
       >
         <div className="form-grid">
-          <Field label="Date de paiement"><TextInput type="date" value={paymentForm.paidAt} onChange={(event) => setPaymentForm({ ...paymentForm, paidAt: event.target.value })} /></Field>
-          <Field label="Moyen de paiement"><TextInput value={paymentForm.paymentMethod} onChange={(event) => setPaymentForm({ ...paymentForm, paymentMethod: event.target.value })} /></Field>
-          <Field label="Reference"><TextInput value={paymentForm.paymentReference} placeholder="Ex: virement, cheque, transaction..." onChange={(event) => setPaymentForm({ ...paymentForm, paymentReference: event.target.value })} /></Field>
+          <Field label="Date de paiement" required><TextInput type="date" value={paymentForm.paidAt} onChange={(event) => setPaymentForm({ ...paymentForm, paidAt: event.target.value })} /></Field>
+          <Field label="Moyen de paiement" required>
+            <SelectInput value={paymentForm.paymentMethod} onChange={(event) => setPaymentForm({ ...paymentForm, paymentMethod: event.target.value, paymentReference: event.target.value === "Especes" ? "" : paymentForm.paymentReference })}>
+              <option value="Virement">Virement</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Carte bancaire">Carte bancaire</option>
+              <option value="Especes">Especes</option>
+              <option value="Autre">Autre</option>
+            </SelectInput>
+          </Field>
+          {paymentNeedsReference ? (
+            <Field label="Reference" optional><TextInput value={paymentForm.paymentReference} placeholder="Ex: numero de cheque, virement, transaction..." onChange={(event) => setPaymentForm({ ...paymentForm, paymentReference: event.target.value })} /></Field>
+          ) : null}
         </div>
       </Modal>
     </div>
@@ -327,8 +370,7 @@ function InvoiceDocument({
   const mediatorInfo = organization?.mediatorInfo;
 
   return (
-    <Panel title="Apercu PDF facture" description="Document client pret a imprimer ou enregistrer en PDF.">
-      <article id="invoice-print-document" className="quote-document invoice-document">
+    <article id="invoice-print-document" className="quote-document invoice-document">
         <header className="quote-document-header">
           <div>
             <span className="quote-document-kicker">Facture</span>
@@ -355,6 +397,7 @@ function InvoiceDocument({
             {clientAddress ? <p>{clientAddress}</p> : null}
             {client?.email ? <p>{client.email}</p> : null}
             {client?.siren ? <p>SIREN: {client.siren}</p> : null}
+            {client?.siret ? <p>SIRET: {client.siret}</p> : null}
             {client?.vatNumber ? <p>TVA: {client.vatNumber}</p> : null}
           </div>
           <div>
@@ -441,8 +484,7 @@ function InvoiceDocument({
             {invoice.paidAt ? <div className="invoice-paid-line"><span>Reglee le</span><strong>{formatDate(invoice.paidAt)}</strong></div> : null}
           </div>
         </section>
-      </article>
-    </Panel>
+    </article>
   );
 }
 

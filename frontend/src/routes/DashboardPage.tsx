@@ -1,9 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { AlertTriangle, ArrowRight, Boxes, Clock3, Euro, FileText, Plus, ReceiptText, TrendingUp, UsersRound } from "lucide-react";
+import { ArrowRight, BarChart3, FileText, ReceiptText } from "lucide-react";
 import { api } from "#convex/_generated/api";
 import type { Doc } from "#convex/_generated/dataModel";
-import { Badge, Button, DataTable, EmptyState, PageHeader, Panel, StatCard } from "@/components/ui/app";
+import { Badge, Button, DataTable, EmptyState, PageHeader, Panel } from "@/components/ui/app";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced";
@@ -23,6 +23,14 @@ const quoteStatusTones: Record<QuoteStatus, "slate" | "indigo" | "emerald" | "ro
   accepted: "emerald",
   refused: "rose",
   invoiced: "cyan",
+};
+
+const quoteStatusOrder: Record<QuoteStatus, number> = {
+  draft: 1,
+  sent: 2,
+  accepted: 3,
+  invoiced: 4,
+  refused: 5,
 };
 
 const invoiceStatusLabels: Record<InvoiceStatus, string> = {
@@ -47,7 +55,6 @@ export function DashboardPage() {
   const urgentCount = dashboard
     ? dashboard.alerts.overdueInvoices + dashboard.alerts.quotesToFollowUp + dashboard.alerts.expiredQuotes
     : 0;
-  const wonQuotes = dashboard ? dashboard.pipeline.accepted + dashboard.pipeline.invoiced : 0;
 
   return (
     <div className="space-y-6">
@@ -61,9 +68,13 @@ export function DashboardPage() {
               <ReceiptText className="h-4 w-4" />
               Factures
             </Button>
+            <Button variant="outline" onClick={() => void navigate({ to: "/stats" })}>
+              <BarChart3 className="h-4 w-4" />
+              Stats
+            </Button>
             <Button onClick={() => void navigate({ to: "/devis" })}>
-              <Plus className="h-4 w-4" />
-              Nouveau devis
+              <FileText className="h-4 w-4" />
+              Voir les devis
             </Button>
           </div>
         }
@@ -74,7 +85,7 @@ export function DashboardPage() {
           <div className="eyebrow border-white/20 bg-white/10 text-cyan-100">Boorise ERP</div>
           <h2>{urgentCount > 0 ? `${urgentCount} priorite(s) a traiter` : "Activite sous controle"}</h2>
           <p>
-            Le dashboard met devant toi ce qui demande une action: encaissement, relance, expiration de devis, marge et catalogue.
+            Le dashboard met devant toi ce qui demande une action: encaissement, relance, expiration de devis et catalogue.
           </p>
         </div>
         <div className="ops-command">
@@ -85,85 +96,62 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="A encaisser" value={dashboard ? formatCurrency(dashboard.totals.unpaidInvoicesTtc) : "-"} detail={`${dashboard?.pipeline.unpaidInvoices ?? 0} facture(s) ouvertes`} icon={<ReceiptText className="h-5 w-5" />} tone="rose" />
-        <StatCard label="En retard" value={dashboard ? formatCurrency(dashboard.totals.overdueInvoicesTtc) : "-"} detail={`${dashboard?.pipeline.overdueInvoices ?? 0} dossier(s)`} icon={<AlertTriangle className="h-5 w-5" />} tone="amber" />
-        <StatCard label="Marge estimee" value={dashboard ? formatCurrency(dashboard.totals.estimatedMarginHt) : "-"} detail={`${dashboard?.totals.estimatedMarginRate ?? 0}% sur lignes chiffrees`} icon={<TrendingUp className="h-5 w-5" />} tone="emerald" />
-        <StatCard label="Conversion" value={dashboard ? `${dashboard.totals.conversionRate}%` : "-"} detail={`${wonQuotes} devis gagnes`} icon={<Euro className="h-5 w-5" />} tone="indigo" />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Clients" value={dashboard?.counts.clients ?? "-"} detail="contacts actifs" icon={<UsersRound className="h-5 w-5" />} tone="emerald" />
-        <StatCard label="Materiaux" value={dashboard?.counts.materials ?? "-"} detail="references actives" icon={<Boxes className="h-5 w-5" />} tone="amber" />
-        <StatCard label="Devis" value={dashboard?.counts.quotes ?? "-"} detail="documents crees" icon={<FileText className="h-5 w-5" />} tone="indigo" />
-        <StatCard label="Devis acceptes" value={dashboard ? formatCurrency(dashboard.totals.acceptedQuotesTtc) : "-"} detail="TTC signe ou facture" icon={<Euro className="h-5 w-5" />} tone="rose" />
-      </div>
-
-      <div className="dashboard-grid">
-        <Panel title="Priorites" description="Ce qui merite une action maintenant.">
-          <div className="priority-board">
-            <PriorityGroup
-              title="Factures en retard"
-              empty="Aucun retard de paiement."
-              items={(dashboard?.priorities.overdueInvoices ?? []).map((invoice) => ({
-                key: invoice._id,
-                title: invoice.number,
-                detail: `${formatClientName(invoice.client)} - echeance ${formatDate(invoice.dueDate)}`,
-                amount: formatCurrency(invoice.totalTtc),
-                tone: "danger" as const,
-              }))}
-            />
-            <PriorityGroup
-              title="Devis a relancer"
-              empty="Aucune relance commerciale urgente."
-              items={(dashboard?.priorities.quotesToFollowUp ?? []).map((quote) => ({
-                key: quote._id,
-                title: quote.number,
-                detail: `${quote.title} - ${formatClientName(quote.client)}`,
-                amount: formatCurrency(quote.totalTtc),
-                tone: "info" as const,
-              }))}
-            />
-            <PriorityGroup
-              title="Devis expires"
-              empty="Aucun devis expire."
-              items={(dashboard?.priorities.expiredQuotes ?? []).map((quote) => ({
-                key: quote._id,
-                title: quote.number,
-                detail: `${quote.title} - validite ${formatDate(quote.validUntil)}`,
-                amount: formatCurrency(quote.totalTtc),
-                tone: "warning" as const,
-              }))}
-            />
-          </div>
-        </Panel>
-
-        <Panel title="Pipeline" description="Etat commercial et encaissement.">
-          <div className="pipeline-board">
-            <PipelineStep label="Brouillons" value={dashboard?.pipeline.draft ?? 0} />
-            <PipelineStep label="Envoyes" value={dashboard?.pipeline.sent ?? 0} />
-            <PipelineStep label="Acceptes" value={dashboard?.pipeline.accepted ?? 0} />
-            <PipelineStep label="Factures" value={dashboard?.pipeline.invoiced ?? 0} />
-            <PipelineStep label="Impayees" value={dashboard?.pipeline.unpaidInvoices ?? 0} alert />
-          </div>
-        </Panel>
-      </div>
+      <Panel title="Priorites" description="Ce qui merite une action maintenant.">
+        <div className="priority-board priority-board-wide">
+          <PriorityGroup
+            title="Factures en retard"
+            empty="Aucun retard de paiement."
+            items={(dashboard?.priorities.overdueInvoices ?? []).map((invoice) => ({
+              key: invoice._id,
+              title: invoice.number,
+              detail: `${formatClientName(invoice.client)} - echeance ${formatDate(invoice.dueDate)}`,
+              amount: formatCurrency(invoice.totalTtc),
+              tone: "danger" as const,
+            }))}
+          />
+          <PriorityGroup
+            title="Devis a relancer"
+            empty="Aucune relance commerciale urgente."
+            items={(dashboard?.priorities.quotesToFollowUp ?? []).map((quote) => ({
+              key: quote._id,
+              title: quote.number,
+              detail: `${quote.title} - ${formatClientName(quote.client)}`,
+              amount: formatCurrency(quote.totalTtc),
+              tone: "info" as const,
+            }))}
+          />
+          <PriorityGroup
+            title="Devis expires"
+            empty="Aucun devis expire."
+            items={(dashboard?.priorities.expiredQuotes ?? []).map((quote) => ({
+              key: quote._id,
+              title: quote.number,
+              detail: `${quote.title} - validite ${formatDate(quote.validUntil)}`,
+              amount: formatCurrency(quote.totalTtc),
+              tone: "warning" as const,
+            }))}
+          />
+        </div>
+      </Panel>
 
       <div className="grid gap-4 xl:grid-cols-[1.35fr_0.95fr]">
         <Panel title="Derniers devis" description="Documents recents et statut commercial.">
           <DataTable
+            density="compact"
+            loading={dashboard === undefined}
             rows={dashboard?.latestQuotes ?? []}
             rowKey={(quote) => quote._id}
             empty={<EmptyState title="Aucun devis" description="Cree ton premier devis depuis le module devis." />}
             columns={[
-              { key: "number", header: "Numero", render: (quote) => <strong>{quote.number}</strong> },
-              { key: "title", header: "Chantier", render: (quote) => quote.title },
-              { key: "client", header: "Client", render: (quote) => formatClientName(quote.client) },
-              { key: "date", header: "Date", render: (quote) => formatDate(quote.issueDate) },
-              { key: "total", header: "Total TTC", render: (quote) => formatCurrency(quote.totalTtc) },
+              { key: "number", header: "Numero", sortValue: (quote) => quote.number, render: (quote) => <strong>{quote.number}</strong> },
+              { key: "title", header: "Chantier", sortValue: (quote) => quote.title, render: (quote) => quote.title },
+              { key: "client", header: "Client", sortValue: (quote) => formatClientName(quote.client), render: (quote) => formatClientName(quote.client) },
+              { key: "date", header: "Date", sortValue: (quote) => quote.issueDate, render: (quote) => formatDate(quote.issueDate) },
+              { key: "total", header: "Total TTC", sortValue: (quote) => quote.totalTtc, render: (quote) => formatCurrency(quote.totalTtc) },
               {
                 key: "status",
                 header: "Statut",
+                sortValue: (quote) => quoteStatusOrder[quote.status as QuoteStatus],
                 render: (quote) => <Badge tone={quoteStatusTones[quote.status as QuoteStatus]}>{quoteStatusLabels[quote.status as QuoteStatus]}</Badge>,
               },
             ]}
@@ -254,16 +242,6 @@ function PriorityGroup({
         ))
       )}
     </section>
-  );
-}
-
-function PipelineStep({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
-  return (
-    <div className={alert && value > 0 ? "pipeline-step pipeline-step-alert" : "pipeline-step"}>
-      <Clock3 className="h-4 w-4" />
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 

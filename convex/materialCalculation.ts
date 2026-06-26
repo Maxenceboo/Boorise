@@ -18,9 +18,22 @@ const round2 = (value: number) => Math.round(value * 100) / 100;
 const round4 = (value: number) => Math.round(value * 10000) / 10000;
 
 export function calculateMaterial(input: MaterialCalcInput): MaterialCalcResult {
-  const wasteRate = Math.max(0, input.wasteRate ?? 0);
-  const requestedQuantity = Math.max(0, input.requestedQuantity || 0);
-  const unitPriceHt = Math.max(0, input.unitPriceHt || 0);
+  if (!Number.isFinite(input.requestedQuantity) || input.requestedQuantity <= 0) {
+    throw new Error("La quantite demandee doit etre superieure a 0");
+  }
+  if (!Number.isFinite(input.unitPriceHt) || input.unitPriceHt < 0) {
+    throw new Error("Le prix unitaire doit etre positif");
+  }
+  if (input.wasteRate !== undefined && (!Number.isFinite(input.wasteRate) || input.wasteRate < 0 || input.wasteRate > 100)) {
+    throw new Error("Le taux de perte doit etre compris entre 0 et 100");
+  }
+  if (!input.divisible && input.quantityPerLot != null && (!Number.isFinite(input.quantityPerLot) || input.quantityPerLot <= 0)) {
+    throw new Error("La quantite par lot doit etre superieure a 0");
+  }
+
+  const wasteRate = input.wasteRate ?? 0;
+  const requestedQuantity = input.requestedQuantity;
+  const unitPriceHt = input.unitPriceHt;
   const quantityWithWaste = round4(requestedQuantity * (1 + wasteRate / 100));
 
   if (input.divisible) {

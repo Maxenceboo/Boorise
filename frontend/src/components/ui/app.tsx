@@ -1,4 +1,5 @@
 import type {
+  ChangeEvent,
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
@@ -204,8 +205,56 @@ export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInput
   return <input className={cn("input", className)} {...props} />;
 }
 
-export function NumberInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn("input", className)} type="number" {...props} />;
+export function NumberInput({ className, min, max, onChange, onBlur, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  function normalize(event: ChangeEvent<HTMLInputElement>) {
+    const normalized = clampNumberInput(event.currentTarget.value, min, max);
+    if (normalized !== event.currentTarget.value) {
+      event.currentTarget.value = normalized;
+    }
+  }
+
+  return (
+    <input
+      className={cn("input", className)}
+      type="number"
+      inputMode="decimal"
+      min={min}
+      max={max}
+      onChange={(event) => {
+        normalize(event);
+        onChange?.(event);
+      }}
+      onBlur={(event) => {
+        normalize(event);
+        onBlur?.(event);
+      }}
+      {...props}
+    />
+  );
+}
+
+function clampNumberInput(value: string, min: InputHTMLAttributes<HTMLInputElement>["min"], max: InputHTMLAttributes<HTMLInputElement>["max"]) {
+  if (value.trim() === "") {
+    return value;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return "";
+  }
+
+  const minNumber = boundToNumber(min);
+  const maxNumber = boundToNumber(max);
+  const clamped = Math.min(maxNumber ?? parsed, Math.max(minNumber ?? parsed, parsed));
+  return clamped === parsed ? value : String(clamped);
+}
+
+function boundToNumber(value: InputHTMLAttributes<HTMLInputElement>["min"]) {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function SelectInput({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {

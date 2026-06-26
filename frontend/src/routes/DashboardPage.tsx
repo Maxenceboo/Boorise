@@ -51,7 +51,9 @@ const invoiceStatusTones: Record<InvoiceStatus, "slate" | "indigo" | "emerald" |
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const current = useQuery(api.app.current);
   const dashboard = useQuery(api.app.dashboard);
+  const companyName = current?.organization?.name ?? "Ton entreprise";
   const urgentCount = dashboard
     ? dashboard.alerts.overdueInvoices + dashboard.alerts.quotesToFollowUp + dashboard.alerts.expiredQuotes
     : 0;
@@ -82,10 +84,10 @@ export function DashboardPage() {
 
       <section className="ops-hero">
         <div>
-          <div className="eyebrow border-white/20 bg-white/10 text-cyan-100">Boorise ERP</div>
+          <div className="eyebrow border-white/20 bg-white/10 text-cyan-100">{companyName}</div>
           <h2>{urgentCount > 0 ? `${urgentCount} priorite(s) a traiter` : "Activite sous controle"}</h2>
           <p>
-            Le dashboard met devant toi ce qui demande une action: encaissement, relance, expiration de devis et catalogue.
+            Ton espace met devant toi ce qui demande une action: encaissement, relance, expiration de devis et catalogue.
           </p>
         </div>
         <div className="ops-command">

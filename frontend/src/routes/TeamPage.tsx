@@ -5,11 +5,14 @@ import { MailPlus, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
 import { api } from "#convex/_generated/api";
 import type { Id } from "#convex/_generated/dataModel";
 import { Badge, Button, DataTable, Field, Notice, PageHeader, Panel, SelectInput, StatCard, TextInput } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
+import { friendlyError } from "@/lib/errors";
 
 type TeamRole = "owner" | "admin" | "member";
 type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
 
 export function TeamPage() {
+  const toast = useToast();
   const team = useQuery(api.app.team);
   const inviteMember = useAction(api.app.inviteMember);
   const updateMemberRole = useMutation(api.app.updateMemberRole);
@@ -34,7 +37,9 @@ export function TeamPage() {
       event.currentTarget.reset();
       setNotice({ kind: "success", message: "Invitation envoyee." });
     } catch (err) {
-      setNotice({ kind: "error", message: err instanceof Error ? err.message : "Invitation impossible" });
+      const message = friendlyError(err, "Invitation impossible.");
+      setNotice({ kind: "error", message });
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -47,7 +52,9 @@ export function TeamPage() {
       await updateMemberRole({ memberId, role });
       setNotice({ kind: "success", message: "Role mis a jour." });
     } catch (err) {
-      setNotice({ kind: "error", message: err instanceof Error ? err.message : "Modification impossible" });
+      const message = friendlyError(err, "Modification impossible.");
+      setNotice({ kind: "error", message });
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -60,7 +67,9 @@ export function TeamPage() {
       await removeMember({ memberId });
       setNotice({ kind: "success", message: "Membre retire de l'equipe." });
     } catch (err) {
-      setNotice({ kind: "error", message: err instanceof Error ? err.message : "Suppression impossible" });
+      const message = friendlyError(err, "Suppression impossible.");
+      setNotice({ kind: "error", message });
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -73,7 +82,9 @@ export function TeamPage() {
       await revokeInvitation({ invitationId });
       setNotice({ kind: "success", message: "Invitation revoquee." });
     } catch (err) {
-      setNotice({ kind: "error", message: err instanceof Error ? err.message : "Revocation impossible" });
+      const message = friendlyError(err, "Revocation impossible.");
+      setNotice({ kind: "error", message });
+      toast.error(message);
     } finally {
       setPending(null);
     }

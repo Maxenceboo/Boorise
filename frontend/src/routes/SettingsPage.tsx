@@ -3,10 +3,13 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { api } from "#convex/_generated/api";
 import { Field, FormSection, Notice, NumberInput, PageHeader, Panel, SelectInput, TextArea, TextInput } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
 import { useBlurAutosave } from "@/hooks/useBlurAutosave";
+import { friendlyError } from "@/lib/errors";
 import { formNumber, formOptionalString } from "@/lib/format";
 
 export function SettingsPage() {
+  const toast = useToast();
   const current = useQuery(api.app.current);
   const updateOrganization = useMutation(api.app.updateOrganization);
   const organization = current?.organization;
@@ -54,13 +57,13 @@ export function SettingsPage() {
         city: formOptionalString(data.get("city")),
         country: formOptionalString(data.get("country")),
         logoUrl: formOptionalString(data.get("logoUrl")),
-        defaultVatRate: vatMode === "taxable" ? formNumber(data.get("defaultVatRate"), 20) : 0,
-        defaultHourlyRate: formNumber(data.get("defaultHourlyRate"), 0),
-        defaultMarginRate: formNumber(data.get("defaultMarginRate"), 0),
+        defaultVatRate: vatMode === "taxable" ? formNumber(data.get("defaultVatRate"), 20, { min: 0, max: 100 }) : 0,
+        defaultHourlyRate: formNumber(data.get("defaultHourlyRate"), 0, { min: 0 }),
+        defaultMarginRate: formNumber(data.get("defaultMarginRate"), 0, { min: 0, max: 100 }),
         quotePrefix: formOptionalString(data.get("quotePrefix")),
         invoicePrefix: formOptionalString(data.get("invoicePrefix")),
-        paymentTermsDays: formNumber(data.get("paymentTermsDays"), 30),
-        quoteValidityDays: formNumber(data.get("quoteValidityDays"), 30),
+        paymentTermsDays: formNumber(data.get("paymentTermsDays"), 30, { min: 0, max: 365 }),
+        quoteValidityDays: formNumber(data.get("quoteValidityDays"), 30, { min: 1, max: 365 }),
         paymentTermsText: formOptionalString(data.get("paymentTermsText")),
         latePenaltyText: formOptionalString(data.get("latePenaltyText")),
         discountTermsText: formOptionalString(data.get("discountTermsText")),
@@ -76,7 +79,9 @@ export function SettingsPage() {
       });
       setNotice({ kind: "success", message: mode === "auto" ? "Sauvegarde automatique effectuee." : "Profil entreprise enregistre." });
     } catch (err) {
-      setNotice({ kind: "error", message: err instanceof Error ? err.message : "Enregistrement impossible" });
+      const message = friendlyError(err, "Enregistrement impossible.");
+      setNotice({ kind: "error", message });
+      toast.error(message);
     }
   }
 
@@ -167,7 +172,7 @@ export function SettingsPage() {
               </Field>
               {vatMode === "taxable" ? (
                 <>
-                  <Field label="TVA par defaut (%)" required><NumberInput name="defaultVatRate" step="0.01" defaultValue={organization.defaultVatRate} /></Field>
+                  <Field label="TVA par defaut (%)" required><NumberInput name="defaultVatRate" min={0} max={100} step="0.01" defaultValue={organization.defaultVatRate} /></Field>
                   <Field label="Numero TVA" legalRequired><TextInput name="vatNumber" defaultValue={organization.vatNumber ?? ""} /></Field>
                   <Field label="TVA sur les debits" required>
                     <SelectInput name="taxDebitOption" defaultValue={organization.taxDebitOption ? "true" : "false"}>
@@ -181,12 +186,12 @@ export function SettingsPage() {
                   <TextArea name="taxExemptionText" defaultValue={organization.taxExemptionText ?? ""} placeholder="Ex: TVA non applicable, art. 293 B du CGI." />
                 </Field>
               )}
-              <Field label="Taux horaire defaut" optional><NumberInput name="defaultHourlyRate" step="0.01" defaultValue={organization.defaultHourlyRate ?? 0} /></Field>
-              <Field label="Marge par defaut (%)" optional><NumberInput name="defaultMarginRate" step="0.01" defaultValue={organization.defaultMarginRate ?? 0} /></Field>
+              <Field label="Taux horaire defaut" optional><NumberInput name="defaultHourlyRate" min={0} step="0.01" defaultValue={organization.defaultHourlyRate ?? 0} /></Field>
+              <Field label="Marge par defaut (%)" optional><NumberInput name="defaultMarginRate" min={0} max={100} step="0.01" defaultValue={organization.defaultMarginRate ?? 0} /></Field>
               <Field label="Prefixe devis" optional><TextInput name="quotePrefix" defaultValue={organization.quotePrefix ?? "D"} /></Field>
               <Field label="Prefixe factures" optional><TextInput name="invoicePrefix" defaultValue={organization.invoicePrefix ?? "F"} /></Field>
-              <Field label="Delai paiement (jours)" legalRequired><NumberInput name="paymentTermsDays" defaultValue={organization.paymentTermsDays ?? 30} /></Field>
-              <Field label="Validite devis (jours)" legalRequired><NumberInput name="quoteValidityDays" defaultValue={organization.quoteValidityDays ?? 30} /></Field>
+              <Field label="Delai paiement (jours)" legalRequired><NumberInput name="paymentTermsDays" min={0} max={365} step={1} defaultValue={organization.paymentTermsDays ?? 30} /></Field>
+              <Field label="Validite devis (jours)" legalRequired><NumberInput name="quoteValidityDays" min={1} max={365} step={1} defaultValue={organization.quoteValidityDays ?? 30} /></Field>
               <Field label="Nature operation par defaut" legalRequired>
                 <SelectInput name="defaultOperationType" defaultValue={organization.defaultOperationType ?? "mixed"}>
                   <option value="mixed">Biens et services</option>

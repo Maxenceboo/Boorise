@@ -3,6 +3,8 @@ import { Check, Coins, Download, Mail, Printer, ReceiptText, Send, X } from "luc
 import { api } from "#convex/_generated/api";
 import type { Doc, Id } from "#convex/_generated/dataModel";
 import { Badge, Button, DataTable, EmptyState, Field, IconButton, Modal, Notice, PageHeader, Panel, SelectInput, TextInput } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
+import { friendlyError } from "@/lib/errors";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
@@ -46,6 +48,7 @@ const invoiceStatusOrder: Record<InvoiceStatus, number> = {
 };
 
 export function InvoicesPage() {
+  const toast = useToast();
   const current = useQuery(api.app.current);
   const invoices = useQuery(api.invoices.list);
   const updateStatus = useMutation(api.invoices.updateStatus);
@@ -85,7 +88,9 @@ export function InvoicesPage() {
     try {
       await updateStatus({ invoiceId, status });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Mise a jour impossible");
+      const message = friendlyError(err, "Mise a jour impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -115,7 +120,9 @@ export function InvoicesPage() {
       });
       setPaymentInvoice(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Encaissement impossible");
+      const message = friendlyError(err, "Encaissement impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }

@@ -94,9 +94,14 @@ export const recordPayment = mutation({
       throw new Error("Une facture annulee ne peut pas etre encaissee");
     }
 
+    const paidAt = args.paidAt ?? Date.now();
+    if (!Number.isFinite(paidAt) || paidAt < 0) {
+      throw new Error("La date de paiement est invalide");
+    }
+
     await ctx.db.patch(args.invoiceId, {
       status: "paid",
-      paidAt: args.paidAt ?? Date.now(),
+      paidAt,
       paymentMethod: cleanOptionalString(args.paymentMethod),
       paymentReference: cleanOptionalString(args.paymentReference),
       updatedAt: Date.now(),

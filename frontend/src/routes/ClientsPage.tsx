@@ -23,7 +23,9 @@ import {
   Toolbar,
   Badge,
 } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
 import { useBlurAutosave } from "@/hooks/useBlurAutosave";
+import { friendlyError } from "@/lib/errors";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 type Client = Doc<"clients">;
@@ -66,6 +68,7 @@ const emptyForm = {
 
 export function ClientsPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const clients = useQuery(api.clients.list, {});
   const createClient = useMutation(api.clients.create);
   const updateClient = useMutation(api.clients.update);
@@ -204,7 +207,9 @@ export function ClientsPage() {
       }
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Enregistrement impossible");
+      const message = friendlyError(err, "Enregistrement impossible.");
+      setError(message);
+      toast.error(message);
       return false;
     } finally {
       setPending(false);
@@ -225,9 +230,15 @@ export function ClientsPage() {
     if (!window.confirm(`Archiver ${name} ?`)) {
       return;
     }
-    await archiveClient({ clientId });
-    if (selectedClientId === clientId) {
-      setSelectedClientId(null);
+    try {
+      await archiveClient({ clientId });
+      if (selectedClientId === clientId) {
+        setSelectedClientId(null);
+      }
+    } catch (err) {
+      const message = friendlyError(err, "Archivage impossible.");
+      setError(message);
+      toast.error(message);
     }
   }
 

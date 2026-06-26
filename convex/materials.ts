@@ -158,7 +158,7 @@ function normalizeMaterial(args: {
   if (!Number.isFinite(args.defaultWasteRate) || args.defaultWasteRate < 0 || args.defaultWasteRate > 100) {
     throw new Error("Le taux de perte doit être compris entre 0 et 100");
   }
-  if (!args.divisible && args.quantityPerLot !== undefined && args.quantityPerLot <= 0) {
+  if (!args.divisible && (args.quantityPerLot === undefined || !Number.isFinite(args.quantityPerLot) || args.quantityPerLot <= 0)) {
     throw new Error("La quantité par lot doit être supérieure à 0");
   }
 
@@ -170,10 +170,10 @@ function normalizeMaterial(args: {
     unit: args.unit,
     purchasePriceHt: roundMoney(args.purchasePriceHt),
     divisible: args.divisible,
-    quantityPerLot: args.divisible ? undefined : args.quantityPerLot,
-    length: normalizePositiveOptional(args.length, "Longueur"),
-    width: normalizePositiveOptional(args.width, "Largeur"),
-    height: normalizePositiveOptional(args.height, "Hauteur"),
+    quantityPerLot: args.divisible ? undefined : normalizeStrictPositive(args.quantityPerLot, "Quantite par lot"),
+    length: normalizeStrictPositiveOptional(args.length, "Longueur"),
+    width: normalizeStrictPositiveOptional(args.width, "Largeur"),
+    height: normalizeStrictPositiveOptional(args.height, "Hauteur"),
     defaultWasteRate: roundRate(args.defaultWasteRate),
     supplier: cleanOptionalString(args.supplier),
   };
@@ -187,12 +187,19 @@ function roundRate(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function normalizePositiveOptional(value: number | undefined, label: string) {
+function normalizeStrictPositive(value: number | undefined, label: string) {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} doit etre superieur a 0`);
+  }
+  return Math.round(value * 10000) / 10000;
+}
+
+function normalizeStrictPositiveOptional(value: number | undefined, label: string) {
   if (value === undefined) {
     return undefined;
   }
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${label} doit etre positif`);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} doit etre superieur a 0`);
   }
   return Math.round(value * 10000) / 10000;
 }

@@ -5,9 +5,12 @@ import { useState } from "react";
 import { ArrowRight, LogOut } from "lucide-react";
 import { api } from "#convex/_generated/api";
 import { Button, Field, Notice, TextInput } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
+import { friendlyError } from "@/lib/errors";
 
 export function OnboardingPage() {
   const { signOut } = useAuthActions();
+  const toast = useToast();
   const createOrganization = useMutation(api.app.createOrganization);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +24,9 @@ export function OnboardingPage() {
     try {
       await createOrganization({ name: String(data.get("name") ?? "") });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Creation impossible");
+      const message = friendlyError(err, "Creation impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(false);
     }

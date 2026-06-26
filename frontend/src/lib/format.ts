@@ -16,9 +16,12 @@ export function formatDate(timestamp: number | undefined) {
   }).format(new Date(timestamp));
 }
 
-export function formNumber(value: FormDataEntryValue | null, fallback = 0) {
+export function formNumber(value: FormDataEntryValue | null, fallback = 0, bounds?: { min?: number; max?: number }) {
   const parsed = Number(String(value ?? "").replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(bounds?.max ?? parsed, Math.max(bounds?.min ?? parsed, parsed));
 }
 
 export function formOptionalString(value: FormDataEntryValue | null) {

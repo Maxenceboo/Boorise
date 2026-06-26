@@ -21,7 +21,9 @@ import {
   TextArea,
   TextInput,
 } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
 import { useBlurAutosave } from "@/hooks/useBlurAutosave";
+import { friendlyError } from "@/lib/errors";
 import { formatCurrency } from "@/lib/format";
 
 type Material = Doc<"materials">;
@@ -56,6 +58,7 @@ const emptyService = {
 };
 
 export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "materials" | "services" }) {
+  const toast = useToast();
   const materials = useQuery(api.materials.list, {});
   const services = useQuery(api.services.list, {});
   const createMaterial = useMutation(api.materials.create);
@@ -224,7 +227,9 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
       }
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Enregistrement impossible");
+      const message = friendlyError(err, "Enregistrement impossible.");
+      setError(message);
+      toast.error(message);
       return false;
     } finally {
       setPending(false);
@@ -251,7 +256,9 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
       }
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Enregistrement impossible");
+      const message = friendlyError(err, "Enregistrement impossible.");
+      setError(message);
+      toast.error(message);
       return false;
     } finally {
       setPending(false);
@@ -280,13 +287,25 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
 
   async function removeMaterial(materialId: Id<"materials">, name: string) {
     if (window.confirm(`Archiver ${name} ?`)) {
-      await archiveMaterial({ materialId });
+      try {
+        await archiveMaterial({ materialId });
+      } catch (err) {
+        const message = friendlyError(err, "Archivage impossible.");
+        setError(message);
+        toast.error(message);
+      }
     }
   }
 
   async function removeService(serviceId: Id<"services">, name: string) {
     if (window.confirm(`Archiver ${name} ?`)) {
-      await archiveService({ serviceId });
+      try {
+        await archiveService({ serviceId });
+      } catch (err) {
+        const message = friendlyError(err, "Archivage impossible.");
+        setError(message);
+        toast.error(message);
+      }
     }
   }
 
@@ -519,7 +538,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
             </div>
             {!materialForm.divisible ? (
               <Field label="Quantite contenue par achat" required hint="Ex: lot de 2 poutres => 2. Boite de 200 vis => 200.">
-                <NumberInput min={0} step="0.01" value={materialForm.quantityPerLot} onChange={(e) => setMaterialForm({ ...materialForm, quantityPerLot: e.target.value })} />
+                <NumberInput min={0.0001} step="0.01" value={materialForm.quantityPerLot} onChange={(e) => setMaterialForm({ ...materialForm, quantityPerLot: e.target.value })} />
               </Field>
             ) : null}
           </FormSection>

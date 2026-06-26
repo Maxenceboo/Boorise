@@ -20,7 +20,9 @@ import {
   TextArea,
   TextInput,
 } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
 import { useBlurAutosave } from "@/hooks/useBlurAutosave";
+import { friendlyError } from "@/lib/errors";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced";
@@ -115,6 +117,7 @@ const emptyQuickMaterial = {
 const materialUnits: MaterialUnit[] = ["piece", "metre", "m2", "m3", "litre", "kilogramme", "lot"];
 
 export function QuotesPage() {
+  const toast = useToast();
   const current = useQuery(api.app.current);
   const clients = useQuery(api.clients.list, {});
   const materials = useQuery(api.materials.list, {});
@@ -241,7 +244,9 @@ export function QuotesPage() {
       setQuoteForm(emptyQuote);
       setQuoteModal(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Creation impossible");
+      const message = friendlyError(err, "Creation impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -300,7 +305,9 @@ export function QuotesPage() {
       }
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Modification impossible");
+      const message = friendlyError(err, "Modification impossible.");
+      setError(message);
+      toast.error(message);
       return false;
     } finally {
       setPending(null);
@@ -336,7 +343,9 @@ export function QuotesPage() {
       });
       setLineForm(emptyLine);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ajout impossible");
+      const message = friendlyError(err, "Ajout impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -386,7 +395,9 @@ export function QuotesPage() {
       }
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Modification de ligne impossible");
+      const message = friendlyError(err, "Modification de ligne impossible.");
+      setError(message);
+      toast.error(message);
       return false;
     } finally {
       setPending(null);
@@ -407,7 +418,9 @@ export function QuotesPage() {
     try {
       await changeStatus({ quoteId, status });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Statut impossible");
+      const message = friendlyError(err, "Statut impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -419,7 +432,9 @@ export function QuotesPage() {
     try {
       await convertToInvoice({ quoteId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Conversion impossible");
+      const message = friendlyError(err, "Conversion impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -432,7 +447,9 @@ export function QuotesPage() {
       const newQuoteId = await duplicateQuote({ quoteId });
       selectQuote(newQuoteId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Duplication impossible");
+      const message = friendlyError(err, "Duplication impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -500,7 +517,9 @@ export function QuotesPage() {
       setQuickClientForm(emptyQuickClient);
       setQuickClientModal(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Creation client impossible");
+      const message = friendlyError(err, "Creation client impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -531,7 +550,9 @@ export function QuotesPage() {
       setQuickMaterialForm(emptyQuickMaterial);
       setQuickMaterialModal(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Creation materiau impossible");
+      const message = friendlyError(err, "Creation materiau impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(null);
     }
@@ -706,10 +727,10 @@ export function QuotesPage() {
                       <TextInput value={lineForm.section} placeholder="Ex: Fournitures, Pose, Finitions..." onChange={(event) => setLineForm({ ...lineForm, section: event.target.value })} />
                     </Field>
                     {lineForm.kind === "custom" ? <Field label="Unite" required><TextInput value={lineForm.unit} onChange={(event) => setLineForm({ ...lineForm, unit: event.target.value })} /></Field> : null}
-                    <Field label="Besoin chantier" required><NumberInput min={0} step="0.01" value={lineForm.quantity} onChange={(event) => setLineForm({ ...lineForm, quantity: Number(event.target.value) })} /></Field>
+                    <Field label="Besoin chantier" required><NumberInput min={0.0001} step="0.01" value={lineForm.quantity} onChange={(event) => setLineForm({ ...lineForm, quantity: Number(event.target.value) })} /></Field>
                     <Field label="Prix HT force" optional><NumberInput min={0} step="0.01" value={lineForm.unitPriceHt} placeholder={selectedMaterial ? String(selectedMaterial.purchasePriceHt) : selectedService ? String(selectedService.unitPriceHt) : "0"} onChange={(event) => setLineForm({ ...lineForm, unitPriceHt: event.target.value })} /></Field>
-                    <Field label="Perte chantier (%)" optional><NumberInput min={0} step="0.01" value={lineForm.wasteRate} placeholder={selectedMaterial ? String(selectedMaterial.defaultWasteRate) : "0"} onChange={(event) => setLineForm({ ...lineForm, wasteRate: event.target.value })} /></Field>
-                    <Field label="Marge (%)" optional><NumberInput min={0} step="0.01" value={lineForm.marginRate} onChange={(event) => setLineForm({ ...lineForm, marginRate: Number(event.target.value) })} /></Field>
+                    <Field label="Perte chantier (%)" optional><NumberInput min={0} max={100} step="0.01" value={lineForm.wasteRate} placeholder={selectedMaterial ? String(selectedMaterial.defaultWasteRate) : "0"} onChange={(event) => setLineForm({ ...lineForm, wasteRate: event.target.value })} /></Field>
+                    <Field label="Marge (%)" optional><NumberInput min={0} max={100} step="0.01" value={lineForm.marginRate} onChange={(event) => setLineForm({ ...lineForm, marginRate: Number(event.target.value) })} /></Field>
                   </div>
 
                   {lineForm.kind === "material" && selectedMaterial ? (
@@ -1008,7 +1029,7 @@ export function QuotesPage() {
           </div>
           {!quickMaterialForm.divisible ? (
             <Field label="Quantite contenue par achat" required hint="Ex: lot de 2 poutres => 2. Boite de 200 vis => 200.">
-              <NumberInput min={0} step="0.01" value={quickMaterialForm.quantityPerLot} onChange={(event) => setQuickMaterialForm({ ...quickMaterialForm, quantityPerLot: event.target.value })} />
+              <NumberInput min={0.0001} step="0.01" value={quickMaterialForm.quantityPerLot} onChange={(event) => setQuickMaterialForm({ ...quickMaterialForm, quantityPerLot: event.target.value })} />
             </Field>
           ) : null}
         </div>
@@ -1019,9 +1040,9 @@ export function QuotesPage() {
 
 function calculatePreview(form: typeof emptyLine, material: Material | null, service: Service | null) {
   const quantity = Math.max(0, form.quantity || 0);
-  const marginRate = Math.max(0, form.marginRate || 0);
-  const unitPriceHt = optionalNumber(form.unitPriceHt) ?? (form.kind === "material" ? material?.purchasePriceHt : form.kind === "service" ? service?.unitPriceHt : 0) ?? 0;
-  const wasteRate = optionalNumber(form.wasteRate) ?? (form.kind === "material" ? material?.defaultWasteRate ?? 0 : 0);
+  const marginRate = clampPercent(form.marginRate || 0);
+  const unitPriceHt = Math.max(0, optionalNumber(form.unitPriceHt) ?? (form.kind === "material" ? material?.purchasePriceHt : form.kind === "service" ? service?.unitPriceHt : 0) ?? 0);
+  const wasteRate = clampPercent(optionalNumber(form.wasteRate) ?? (form.kind === "material" ? material?.defaultWasteRate ?? 0 : 0));
   const quantityWithWaste = round4(quantity * (1 + wasteRate / 100));
 
   if (form.kind === "material" && material && !material.divisible) {
@@ -1345,10 +1366,10 @@ function LineEditModal({
         <Field label="Designation" optional><TextInput value={form.description} onChange={(event) => onChange({ ...form, description: event.target.value })} /></Field>
         <Field label="Lot de travaux" optional><TextInput value={form.section} onChange={(event) => onChange({ ...form, section: event.target.value })} /></Field>
         {form.kind === "custom" ? <Field label="Unite" required><TextInput value={form.unit} onChange={(event) => onChange({ ...form, unit: event.target.value })} /></Field> : null}
-        <Field label="Besoin chantier" required><NumberInput min={0} step="0.01" value={form.quantity} onChange={(event) => onChange({ ...form, quantity: Number(event.target.value) })} /></Field>
+        <Field label="Besoin chantier" required><NumberInput min={0.0001} step="0.01" value={form.quantity} onChange={(event) => onChange({ ...form, quantity: Number(event.target.value) })} /></Field>
         <Field label="Prix HT force" optional><NumberInput min={0} step="0.01" value={form.unitPriceHt} onChange={(event) => onChange({ ...form, unitPriceHt: event.target.value })} /></Field>
-        <Field label="Perte chantier (%)" optional><NumberInput min={0} step="0.01" value={form.wasteRate} onChange={(event) => onChange({ ...form, wasteRate: event.target.value })} /></Field>
-        <Field label="Marge (%)" optional><NumberInput min={0} step="0.01" value={form.marginRate} onChange={(event) => onChange({ ...form, marginRate: Number(event.target.value) })} /></Field>
+        <Field label="Perte chantier (%)" optional><NumberInput min={0} max={100} step="0.01" value={form.wasteRate} onChange={(event) => onChange({ ...form, wasteRate: event.target.value })} /></Field>
+        <Field label="Marge (%)" optional><NumberInput min={0} max={100} step="0.01" value={form.marginRate} onChange={(event) => onChange({ ...form, marginRate: Number(event.target.value) })} /></Field>
       </div>
       <div className="edit-line-preview">
         <Calc label="Besoin" value={formatPreviewNeed(form, selectedMaterial)} />
@@ -1816,6 +1837,13 @@ function optionalNumber(value: string) {
   }
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, value));
 }
 
 function timestampToDateInput(timestamp: number | undefined) {

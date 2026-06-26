@@ -243,8 +243,8 @@ export const updateOrganization = mutation({
       defaultMarginRate: args.defaultMarginRate === undefined ? undefined : clampRate(args.defaultMarginRate, "Marge"),
       quotePrefix: cleanOptionalString(args.quotePrefix),
       invoicePrefix: cleanOptionalString(args.invoicePrefix),
-      paymentTermsDays: Math.max(0, Math.round(args.paymentTermsDays ?? 30)),
-      quoteValidityDays: Math.max(0, Math.round(args.quoteValidityDays ?? 30)),
+      paymentTermsDays: clampDays(args.paymentTermsDays ?? 30, "Delai de paiement", 0),
+      quoteValidityDays: clampDays(args.quoteValidityDays ?? 30, "Validite du devis", 1),
       paymentTermsText: cleanOptionalString(args.paymentTermsText),
       latePenaltyText: cleanOptionalString(args.latePenaltyText),
       discountTermsText: cleanOptionalString(args.discountTermsText),
@@ -691,6 +691,13 @@ function clampRate(value: number, label: string) {
     throw new Error(`${label} doit être compris entre 0 et 100`);
   }
   return Math.round(value * 100) / 100;
+}
+
+function clampDays(value: number, label: string, min: number) {
+  if (!Number.isFinite(value) || value < min || value > 365) {
+    throw new Error(`${label} doit etre compris entre ${min} et 365 jours`);
+  }
+  return Math.round(value);
 }
 
 function roundPositive(value: number, label: string) {

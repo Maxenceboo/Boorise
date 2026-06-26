@@ -17,6 +17,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { api } from "#convex/_generated/api";
+import type { Doc } from "#convex/_generated/dataModel";
 import { Button, IconButton } from "@/components/ui/app";
 import { cn } from "@/lib/utils";
 
@@ -76,12 +77,12 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <Sidebar className="hidden lg:flex" pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+      <Sidebar className="hidden lg:flex" organization={current?.organization ?? null} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
 
       {mobileOpen ? (
         <div className="mobile-nav">
           <button className="mobile-nav-scrim" aria-label="Fermer le menu" onClick={() => setMobileOpen(false)} />
-          <Sidebar className="relative z-10 flex h-full w-80" pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+          <Sidebar className="relative z-10 flex h-full w-80" organization={current?.organization ?? null} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
         </div>
       ) : null}
 
@@ -91,9 +92,9 @@ export function AppShell() {
             <IconButton className="lg:hidden" label="Ouvrir le menu" onClick={() => setMobileOpen(true)}>
               <Menu className="h-4 w-4" />
             </IconButton>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-slate-950">{active.label}</div>
-              <div className="truncate text-xs text-slate-500">{current?.organization?.name ?? active.description}</div>
+            <div className="topbar-company min-w-0">
+              <div className="truncate text-sm font-semibold text-slate-950">{current?.organization?.name ?? "Entreprise"}</div>
+              <div className="truncate text-xs text-slate-500">{active.label} - {active.description}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -120,20 +121,25 @@ export function AppShell() {
 
 function Sidebar({
   className,
+  organization,
   pathname,
   onNavigate,
 }: {
   className?: string;
+  organization: Doc<"organizations"> | null;
   pathname: string;
   onNavigate: () => void;
 }) {
+  const companyName = organization?.name ?? "Mon entreprise";
   return (
     <aside className={cn("sidebar", className)}>
       <div className="brand-row">
-        <div className="brand-mark">B</div>
+        <div className="brand-mark company-brand-mark">
+          {organization?.logoUrl ? <img src={organization.logoUrl} alt="" /> : companyInitial(companyName)}
+        </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-slate-950">Boorise</div>
-          <div className="truncate text-xs text-slate-500">ERP artisans</div>
+          <div className="truncate text-base font-black text-slate-950">{companyName}</div>
+          <div className="truncate text-xs text-slate-500">Espace gere avec Boorise</div>
         </div>
         <IconButton className="ml-auto lg:hidden" label="Fermer le menu" onClick={onNavigate}>
           <X className="h-4 w-4" />
@@ -157,6 +163,10 @@ function Sidebar({
       </div>
     </aside>
   );
+}
+
+function companyInitial(name: string) {
+  return name.trim().slice(0, 1).toUpperCase() || "E";
 }
 
 function NavItem({

@@ -142,6 +142,23 @@ a {
   box-shadow: 0 12px 28px rgb(73 20 116 / 18%);
 }
 
+.company-brand-mark {
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  border: 1px solid rgb(229 210 186 / 70%);
+  border-radius: 1rem;
+  background: linear-gradient(135deg, var(--bo-purple-900), var(--bo-purple-700));
+  font-size: 1.05rem;
+  box-shadow: 0 16px 34px rgb(73 20 116 / 22%);
+}
+
+.company-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .nav-list {
   margin-top: 0.35rem;
   display: grid;
@@ -1565,6 +1582,74 @@ a {
 .notice-success { border: 1px solid #c8afd7; background: #ead9f2; color: var(--bo-purple-700); }
 .notice-error { border: 1px solid #f4b79f; background: var(--bo-orange-soft); color: var(--bo-orange); }
 .notice-warning { border: 1px solid #d7b995; background: #fff6ea; color: var(--bo-purple-900); }
+
+.toast-region {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 90;
+  display: grid;
+  width: min(25rem, calc(100vw - 2rem));
+  gap: 0.7rem;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgb(221 198 170 / 86%);
+  border-left-width: 4px;
+  border-radius: 0.95rem;
+  background: #fffaf3;
+  box-shadow: 0 22px 60px rgb(73 20 116 / 18%);
+  padding: 0.85rem 0.9rem;
+  pointer-events: auto;
+  animation: toast-enter 180ms ease-out;
+}
+
+.toast strong {
+  display: block;
+  color: var(--bo-purple-900);
+  font-size: 0.88rem;
+}
+
+.toast p {
+  margin-top: 0.18rem;
+  color: #5d445f;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.toast button {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #7a5f6c;
+  cursor: pointer;
+}
+
+.toast-error { border-left-color: var(--bo-orange); }
+.toast-success { border-left-color: #2f8f4e; }
+.toast-warning { border-left-color: #d58a00; }
+.toast-info { border-left-color: var(--bo-purple-700); }
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 .modal-backdrop {
   position: fixed;

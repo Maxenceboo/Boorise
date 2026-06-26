@@ -400,7 +400,8 @@ async function normalizeQuoteItem(
     throw new Error("La quantité doit être supérieure à 0");
   }
   const marginRate = clampRate(args.marginRate ?? 0, "Marge");
-  const wasteRate = clampRate(args.wasteRate ?? 0, "Perte");
+  const wasteRate = args.wasteRate === undefined ? undefined : clampRate(args.wasteRate, "Perte");
+  const unitPriceOverride = args.unitPriceHt === undefined ? undefined : normalizeMoneyInput(args.unitPriceHt, "Le prix unitaire");
 
   if (args.kind === "material") {
     if (!args.materialId) {
@@ -410,12 +411,14 @@ async function normalizeQuoteItem(
     if (!material || material.organizationId !== organizationId) {
       throw new Error("Matériau introuvable");
     }
+    const materialWasteRate = wasteRate ?? material.defaultWasteRate;
+    const unitPriceHt = unitPriceOverride ?? material.purchasePriceHt;
     const calculation = calculateMaterial({
       requestedQuantity: args.quantity,
-      wasteRate: args.wasteRate ?? material.defaultWasteRate,
+      wasteRate: materialWasteRate,
       divisible: material.divisible,
       quantityPerLot: material.quantityPerLot,
-      unitPriceHt: args.unitPriceHt ?? material.purchasePriceHt,
+      unitPriceHt,
     });
 
     return {
@@ -426,8 +429,8 @@ async function normalizeQuoteItem(
       description: cleanOptionalString(args.description) ?? material.name,
       unit: material.unit,
       quantity: round4(args.quantity),
-      unitPriceHt: roundMoney(args.unitPriceHt ?? material.purchasePriceHt),
-      wasteRate: args.wasteRate ?? material.defaultWasteRate,
+      unitPriceHt: roundMoney(unitPriceHt),
+      wasteRate: materialWasteRate,
       marginRate,
       quantityWithWaste: calculation.quantityWithWaste,
       purchasedQuantity: calculation.purchasedQuantity,
@@ -446,7 +449,7 @@ async function normalizeQuoteItem(
     if (!service || service.organizationId !== organizationId) {
       throw new Error("Prestation introuvable");
     }
-    const unitPriceHt = args.unitPriceHt ?? service.unitPriceHt;
+    const unitPriceHt = unitPriceOverride ?? service.unitPriceHt;
     return {
       kind: args.kind,
       materialId: undefined,
@@ -467,7 +470,8 @@ async function normalizeQuoteItem(
     };
   }
 
-  const unitPriceHt = args.unitPriceHt ?? 0;
+  const customWasteRate = wasteRate ?? 0;
+  const unitPriceHt = unitPriceOverride ?? 0;
   if (!Number.isFinite(unitPriceHt) || unitPriceHt < 0) {
     throw new Error("Le prix unitaire doit être positif");
   }
@@ -481,14 +485,14 @@ async function normalizeQuoteItem(
     unit: cleanRequiredString(args.unit ?? "", "L'unité"),
     quantity: round4(args.quantity),
     unitPriceHt: roundMoney(unitPriceHt),
-    wasteRate,
+    wasteRate: customWasteRate,
     marginRate,
-    quantityWithWaste: round4(args.quantity * (1 + wasteRate / 100)),
-    purchasedQuantity: round4(args.quantity * (1 + wasteRate / 100)),
-    deliveredPhysicalQuantity: round4(args.quantity * (1 + wasteRate / 100)),
-    wasteQuantity: round4(args.quantity * (wasteRate / 100)),
-    realCostHt: roundMoney(args.quantity * unitPriceHt * (1 + wasteRate / 100)),
-    totalHt: roundMoney(args.quantity * unitPriceHt * (1 + (wasteRate + marginRate) / 100)),
+    quantityWithWaste: round4(args.quantity * (1 + customWasteRate / 100)),
+    purchasedQuantity: round4(args.quantity * (1 + customWasteRate / 100)),
+    deliveredPhysicalQuantity: round4(args.quantity * (1 + customWasteRate / 100)),
+    wasteQuantity: round4(args.quantity * (customWasteRate / 100)),
+    realCostHt: roundMoney(args.quantity * unitPriceHt * (1 + customWasteRate / 100)),
+    totalHt: roundMoney(args.quantity * unitPriceHt * (1 + (customWasteRate + marginRate) / 100)),
   };
 }
 
@@ -599,6 +603,13 @@ function clampRate(value: number, label: string) {
     throw new Error(`${label} doit être compris entre 0 et 100`);
   }
   return Math.round(value * 100) / 100;
+}
+
+function normalizeMoneyInput(value: number, label: string) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} doit etre positif`);
+  }
+  return roundMoney(value);
 }
 
 function roundMoney(value: number) {

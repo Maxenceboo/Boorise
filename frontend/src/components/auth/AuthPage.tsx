@@ -4,12 +4,15 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Chrome, LockKeyhole, Mail } from "lucide-react";
 import { Button, Field, Notice, TextInput } from "@/components/ui/app";
+import { useToast } from "@/components/ui/toast-context";
+import { friendlyError } from "@/lib/errors";
 import { api } from "#convex/_generated/api";
 
 type AuthMode = "signIn" | "signUp" | "reset" | "resetVerify";
 
 export function AuthPage() {
   const { signIn } = useAuthActions();
+  const toast = useToast();
   const requestPasswordReset = useAction(api.app.requestPasswordReset);
   const [mode, setMode] = useState<AuthMode>(getInitialAuthMode);
   const [pending, setPending] = useState(false);
@@ -30,7 +33,9 @@ export function AuthPage() {
         setError("La redirection Google n'a pas pu etre lancee.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connexion Google impossible");
+      const message = friendlyError(err, "Connexion Google impossible.");
+      setError(message);
+      toast.error(message);
       setOauthPending(false);
     }
   }
@@ -76,7 +81,9 @@ export function AuthPage() {
         setError("La session n'a pas pu etre ouverte.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action impossible");
+      const message = friendlyError(err, "Action impossible.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPending(false);
     }

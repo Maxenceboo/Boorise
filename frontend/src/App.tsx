@@ -23,12 +23,17 @@ export function App() {
   const app = <RouterProvider router={router} />;
 
   return (
-    <ConvexAuthProvider client={convex}>
+    <ConvexAuthProvider client={convex} shouldHandleCode={shouldHandleAuthCode}>
       <AuthGate>
         <WorkspaceGate>{app}</WorkspaceGate>
       </AuthGate>
     </ConvexAuthProvider>
   );
+}
+
+function shouldHandleAuthCode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("flow") !== "reset";
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {

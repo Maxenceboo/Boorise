@@ -1,4 +1,4 @@
-import { jsPDF } from "jspdf";
+import type { jsPDF } from "jspdf";
 import type { Doc } from "#convex/_generated/dataModel";
 import { formatCurrency, formatDate } from "@/lib/format";
 
@@ -20,34 +20,34 @@ type PdfLineItem = Pick<Doc<"quoteItems">, "description" | "quantity" | "unit" |
 const margin = 16;
 const pageWidth = 210;
 
-export function downloadQuotePdf(bundle: QuoteBundle, organization: Doc<"organizations"> | null) {
-  const pdf = createQuotePdf(bundle, organization);
+export async function downloadQuotePdf(bundle: QuoteBundle, organization: Doc<"organizations"> | null) {
+  const pdf = await createQuotePdf(bundle, organization);
   pdf.save(`${safeFileName(bundle.quote.number)}.pdf`);
 }
 
-export function quotePdfAttachment(bundle: QuoteBundle, organization: Doc<"organizations"> | null) {
-  const pdf = createQuotePdf(bundle, organization);
+export async function quotePdfAttachment(bundle: QuoteBundle, organization: Doc<"organizations"> | null) {
+  const pdf = await createQuotePdf(bundle, organization);
   return {
     filename: `${safeFileName(bundle.quote.number)}.pdf`,
     contentBase64: dataUriToBase64(pdf.output("datauristring")),
   };
 }
 
-export function invoicePdfAttachment(bundle: InvoiceBundle, organization: Doc<"organizations"> | null) {
-  const pdf = createInvoicePdf(bundle, organization);
+export async function invoicePdfAttachment(bundle: InvoiceBundle, organization: Doc<"organizations"> | null) {
+  const pdf = await createInvoicePdf(bundle, organization);
   return {
     filename: `${safeFileName(bundle.invoice.number)}.pdf`,
     contentBase64: dataUriToBase64(pdf.output("datauristring")),
   };
 }
 
-export function downloadInvoicePdf(bundle: InvoiceBundle, organization: Doc<"organizations"> | null) {
-  const pdf = createInvoicePdf(bundle, organization);
+export async function downloadInvoicePdf(bundle: InvoiceBundle, organization: Doc<"organizations"> | null) {
+  const pdf = await createInvoicePdf(bundle, organization);
   pdf.save(`${safeFileName(bundle.invoice.number)}.pdf`);
 }
 
-function createQuotePdf(bundle: QuoteBundle, organization: Doc<"organizations"> | null) {
-  const pdf = createBaseDocument("DEVIS", bundle.quote.number, bundle.quote.title, organization, bundle.client);
+async function createQuotePdf(bundle: QuoteBundle, organization: Doc<"organizations"> | null) {
+  const pdf = await createBaseDocument("DEVIS", bundle.quote.number, bundle.quote.title, organization, bundle.client);
   let y = 82;
   y = addMeta(pdf, y, [
     ["Date", formatDate(bundle.quote.issueDate)],
@@ -60,8 +60,8 @@ function createQuotePdf(bundle: QuoteBundle, organization: Doc<"organizations"> 
   return pdf;
 }
 
-function createInvoicePdf(bundle: InvoiceBundle, organization: Doc<"organizations"> | null) {
-  const pdf = createBaseDocument(invoiceKindTitle(bundle.invoice), bundle.invoice.number, bundle.quote?.title ?? "Facture", organization, bundle.client);
+async function createInvoicePdf(bundle: InvoiceBundle, organization: Doc<"organizations"> | null) {
+  const pdf = await createBaseDocument(invoiceKindTitle(bundle.invoice), bundle.invoice.number, bundle.quote?.title ?? "Facture", organization, bundle.client);
   let y = 82;
   y = addMeta(pdf, y, [
     ["Emission", formatDate(bundle.invoice.issueDate)],
@@ -74,13 +74,14 @@ function createInvoicePdf(bundle: InvoiceBundle, organization: Doc<"organization
   return pdf;
 }
 
-function createBaseDocument(
+async function createBaseDocument(
   kind: string,
   number: string,
   title: string,
   organization: Doc<"organizations"> | null,
   client: Doc<"clients"> | null,
 ) {
+  const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
   pdf.setProperties({ title: `${kind} ${number}`, subject: title, creator: "Boorise" });
   pdf.setDrawColor(216, 209, 199);

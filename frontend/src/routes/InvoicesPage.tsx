@@ -141,7 +141,7 @@ export function InvoicesPage() {
     setPending(`email-${selectedInvoice.invoice._id}`);
     setError(null);
     try {
-      const attachment = invoicePdfAttachment(selectedInvoice, organization);
+      const attachment = await invoicePdfAttachment(selectedInvoice, organization);
       const result = await sendInvoiceEmail({
         invoiceId: selectedInvoice.invoice._id,
         attachment,
@@ -474,7 +474,7 @@ export function InvoicesPage() {
           <>
             <Button variant="outline" onClick={() => setPreviewModal(false)}>Fermer</Button>
             {selectedInvoice ? (
-              <Button onClick={() => downloadInvoicePdf(selectedInvoice, organization)}>
+              <Button onClick={() => void downloadInvoicePdf(selectedInvoice, organization)}>
                 <Download className="h-4 w-4" />
                 Telecharger PDF
               </Button>

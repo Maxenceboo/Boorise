@@ -4751,4 +4751,604 @@ a {
   }
 }
 
+@media (max-width: 1023px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-shell,
+  .app-main {
+    min-width: 0;
+  }
+
+  .topbar {
+    gap: 0.65rem;
+    height: auto;
+    min-height: 3.75rem;
+    padding: 0.55rem 0.85rem;
+  }
+
+  .topbar > div {
+    min-width: 0;
+  }
+
+  .topbar-company {
+    max-width: min(52vw, 22rem);
+  }
+
+  .global-search {
+    display: none;
+  }
+
+  .content {
+    max-width: 100%;
+    padding: 0.9rem;
+  }
+
+  .mobile-nav {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    background: rgb(73 20 116 / 38%);
+  }
+
+  .mobile-nav .sidebar {
+    width: min(86vw, 21rem);
+    max-width: 21rem;
+    box-shadow: 18px 0 48px rgb(73 20 116 / 22%);
+  }
+
+  .sidebar {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-note {
+    margin-top: auto;
+  }
+
+  .page-header,
+  .panel-header,
+  .company-hero,
+  .quote-card-main,
+  .quote-card-footer,
+  .public-document-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-actions,
+  .panel-actions,
+  .landing-nav-actions,
+  .quote-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .page-actions .inline-flex,
+  .panel-actions .inline-flex {
+    flex: 1 1 10rem;
+  }
+
+  .dashboard-grid > .panel {
+    min-height: auto;
+  }
+
+  .priority-board,
+  .quote-list,
+  .client-history-list,
+  .panel > .stack-list,
+  .panel > .recent-clients-grid {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .stats-layout,
+  .catalog-shell,
+  .quote-studio,
+  .quote-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .quote-workspace .calc-card,
+  .stats-layout > .panel {
+    position: static;
+  }
+
+  .quote-template-grid,
+  .stats-board,
+  .business-kpi-grid,
+  .quote-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quote-document {
+    width: 100%;
+    max-height: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .content {
+    padding: 0.75rem;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+  }
+
+  .topbar .inline-flex:not(.lg\:hidden):not(.md\:hidden) {
+    min-width: 2.35rem;
+  }
+
+  .topbar-company {
+    max-width: calc(100vw - 10.5rem);
+  }
+
+  .panel,
+  .hero-panel,
+  .ops-hero,
+  .invoice-summary,
+  .quote-summary,
+  .quote-workflow-card,
+  .quote-business-panel,
+  .quote-template-panel,
+  .company-hero,
+  .public-document-shell {
+    border-radius: 0.95rem;
+    padding: 0.9rem;
+  }
+
+  .panel-header,
+  .page-header {
+    gap: 0.75rem;
+    min-height: 0;
+    margin-bottom: 0.85rem;
+  }
+
+  .page-header h1 {
+    font-size: clamp(1.6rem, 9vw, 2.35rem);
+    line-height: 1;
+  }
+
+  .page-header p,
+  .panel-header p {
+    font-size: 0.86rem;
+  }
+
+  .hero-panel h2,
+  .ops-hero h2 {
+    font-size: clamp(1.85rem, 10vw, 2.7rem);
+  }
+
+  .ops-command-row,
+  .priority-card,
+  .pipeline-step {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .business-kpi-grid,
+  .quote-overview,
+  .stats-board,
+  .stats-kpi-grid,
+  .stats-kpi-grid-2,
+  .quote-template-grid,
+  .client-history-grid,
+  .payment-summary,
+  .quote-card-details,
+  .settings-document-grid,
+  .role-matrix,
+  .custom-stats-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .table-wrap {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .data-table,
+  .data-table thead,
+  .data-table tbody,
+  .data-table tr,
+  .data-table th,
+  .data-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .data-table tbody {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .data-table tr {
+    overflow: hidden;
+    border: 1px solid var(--bo-border);
+    border-radius: 0.95rem;
+    background: white;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .data-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    min-height: 2.65rem;
+    border-bottom: 1px solid rgb(221 198 170 / 70%);
+    padding: 0.72rem 0.85rem;
+    text-align: right;
+  }
+
+  .data-table td:first-child {
+    display: block;
+    text-align: left;
+  }
+
+  .data-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .data-table td:not(:first-child)::before {
+    content: "Info";
+    flex: 0 0 auto;
+    max-width: 9rem;
+    color: var(--bo-muted);
+    font-size: 0.7rem;
+    font-weight: 850;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .data-table td:nth-child(2)::before { content: "Statut"; }
+  .data-table td:nth-child(3)::before { content: "Montant"; }
+  .data-table td:nth-child(4)::before { content: "Date"; }
+  .data-table td:nth-child(5)::before { content: "Detail"; }
+  .data-table td:nth-child(6)::before { content: "Suivi"; }
+  .data-table td:nth-child(7)::before { content: "Total"; }
+
+  .data-table td.actions-cell,
+  .data-table th.actions-cell {
+    width: 100%;
+    background: white;
+  }
+
+  .data-table td.actions-cell::before {
+    content: "Actions";
+  }
+
+  .row-actions,
+  .data-table .row-actions {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+
+  .data-table .actions-cell .inline-flex {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+  }
+
+  .quote-lines-table tr,
+  .quote-document-table tr {
+    border-radius: 0.75rem;
+  }
+
+  .quote-section-row td,
+  .quote-sketch-row td {
+    display: block;
+    text-align: left;
+  }
+
+  .quote-section-row td::before,
+  .quote-sketch-row td::before {
+    content: "";
+    display: none;
+  }
+
+  .quote-sketch {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .quote-sketch span:not(.quote-sketch-label):not(:last-child)::after {
+    content: "";
+  }
+
+  .quote-workflow-card,
+  .quote-summary,
+  .invoice-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-workflow-primary,
+  .quote-secondary-actions > div {
+    width: 100%;
+  }
+
+  .quote-secondary-actions {
+    width: 100%;
+  }
+
+  .quote-secondary-actions summary {
+    width: 100%;
+  }
+
+  .quote-secondary-actions > div {
+    position: static;
+    min-width: 0;
+    margin-top: 0.5rem;
+  }
+
+  .quote-workflow-primary > .clickable-action,
+  .quote-secondary-actions .clickable-action,
+  .quote-cta-panel .clickable-action {
+    width: 100%;
+  }
+
+  .quote-card-actions .inline-flex,
+  .landing-cta-row .inline-flex,
+  .public-decision-actions .inline-flex {
+    width: 100%;
+  }
+
+  .modal-backdrop {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .modal {
+    max-height: 100dvh;
+    min-height: 100dvh;
+    margin: 0;
+    border-width: 0;
+    border-radius: 0;
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 0.85rem;
+  }
+
+  .modal-body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .form-section,
+  .modal .form-section {
+    padding: 0.8rem;
+  }
+
+  .purchase-mode {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .input,
+  .switch-field {
+    min-height: 2.75rem;
+  }
+
+  .company-logo {
+    width: 4rem;
+    height: 4rem;
+  }
+
+  .public-document-page {
+    padding: 0.75rem;
+  }
+
+  .public-document-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .public-document-line {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+
+  .public-document-line span {
+    text-align: left;
+  }
+
+  .quote-document {
+    padding: 0.8rem;
+    border-radius: 0.85rem;
+    font-size: 0.92rem;
+  }
+
+  .quote-document h1 {
+    font-size: clamp(1.65rem, 12vw, 2.25rem);
+  }
+
+  .quote-document-company {
+    flex-direction: column;
+  }
+
+  .quote-document-meta,
+  .quote-document-bottom,
+  .quote-document-terms > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-document-table,
+  .quote-document-table thead,
+  .quote-document-table tbody,
+  .quote-document-table tr,
+  .quote-document-table th,
+  .quote-document-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .quote-document-table thead {
+    display: none;
+  }
+
+  .quote-document-table tr {
+    border-bottom: 1px solid #d8d1c7;
+  }
+
+  .quote-document-table td,
+  .quote-document-table th:nth-child(n+3),
+  .quote-document-table td:nth-child(n+3) {
+    text-align: left;
+  }
+
+  .quote-document-totals {
+    width: 100%;
+  }
+
+  .landing-nav {
+    align-items: flex-start;
+  }
+
+  .landing-nav-actions {
+    justify-content: flex-end;
+    width: auto;
+  }
+
+  .landing-nav-actions .inline-flex:first-child {
+    display: none;
+  }
+
+  .landing-hero {
+    min-height: auto;
+    padding: 1.25rem 0 2.5rem;
+  }
+
+  .landing-hero h1 {
+    font-size: clamp(2.55rem, 15vw, 3.4rem);
+  }
+
+  .landing-hero-copy > p {
+    font-size: 0.98rem;
+    line-height: 1.6;
+  }
+
+  .landing-product-preview {
+    border-radius: 1rem;
+  }
+
+  .preview-layout,
+  .landing-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview-summary > strong {
+    font-size: 1.25rem;
+  }
+
+  .landing-scroll-cue {
+    display: none;
+  }
+
+  .landing-section-heading h2,
+  .landing-split h2,
+  .landing-final h2 {
+    font-size: clamp(1.85rem, 10vw, 2.55rem);
+  }
+
+  .landing-feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .auth-screen {
+    min-height: 100dvh;
+    padding: 0.75rem;
+  }
+
+  .auth-panel,
+  .onboarding-shell {
+    padding: 0;
+  }
+
+  .auth-card,
+  .onboarding-card {
+    border-radius: 1rem;
+    padding: 1rem;
+  }
+
+  .onboarding-steps span {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .content {
+    padding: 0.55rem;
+  }
+
+  .topbar {
+    padding-inline: 0.55rem;
+  }
+
+  .topbar-company {
+    max-width: calc(100vw - 9.2rem);
+  }
+
+  .brand-row {
+    padding-inline: 0.85rem;
+  }
+
+  .panel,
+  .hero-panel,
+  .ops-hero {
+    padding: 0.75rem;
+  }
+
+  .row-actions {
+    flex-wrap: wrap;
+  }
+
+  .data-table td {
+    align-items: stretch;
+    flex-direction: column;
+    text-align: left;
+  }
+
+  .data-table td:not(:first-child)::before {
+    max-width: none;
+  }
+
+  .modal-header h2 {
+    font-size: 0.95rem;
+  }
+
+  .landing-nav {
+    width: min(100% - 0.75rem, 1180px);
+  }
+
+  .landing-hero,
+  .landing-band,
+  .landing-split,
+  .landing-final {
+    width: min(100% - 0.75rem, 1180px);
+  }
+}
+
 

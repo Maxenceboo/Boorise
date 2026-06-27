@@ -62,7 +62,7 @@ export function PublicQuotePage({ token }: { token: string }) {
             <h1>{bundle.quote.number}</h1>
             <p>{bundle.quote.title}</p>
           </div>
-          <Button variant="outline" onClick={() => downloadQuotePdf(bundle, bundle.organization)}>
+          <Button variant="outline" onClick={() => void downloadQuotePdf(bundle, bundle.organization)}>
             <Download className="h-4 w-4" />
             PDF
           </Button>

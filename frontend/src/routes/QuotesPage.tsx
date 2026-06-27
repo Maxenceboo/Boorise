@@ -645,7 +645,7 @@ export function QuotesPage() {
     setPending(`email-${selectedQuote.quote._id}`);
     setError(null);
     try {
-      const attachment = quotePdfAttachment(selectedQuote, organization);
+      const attachment = await quotePdfAttachment(selectedQuote, organization);
       const result = await sendQuoteEmail({
         quoteId: selectedQuote.quote._id,
         attachment,
@@ -1385,7 +1385,7 @@ export function QuotesPage() {
           <>
             <Button variant="outline" onClick={() => setPreviewModal(false)}>Fermer</Button>
             {selectedQuote ? (
-              <Button onClick={() => downloadQuotePdf(selectedQuote, organization)}>
+              <Button onClick={() => void downloadQuotePdf(selectedQuote, organization)}>
                 <Download className="h-4 w-4" />
                 Telecharger PDF
               </Button>

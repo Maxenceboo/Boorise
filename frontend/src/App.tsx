@@ -3,15 +3,12 @@ import { ConvexReactClient, useConvexAuth, useMutation, useQuery } from "convex/
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { api } from "#convex/_generated/api";
-import { AuthPage, type AuthMode } from "@/components/auth/AuthPage";
+import type { AuthMode } from "@/components/auth/AuthPage";
 import { BooriseMark } from "@/components/brand/BooriseLogo";
-import { OnboardingPage } from "@/components/auth/OnboardingPage";
-import { LandingPage } from "@/components/marketing/LandingPage";
 import { Button, Notice } from "@/components/ui/app";
-import { PublicQuotePage } from "@/routes/PublicQuotePage";
 import { useToast } from "@/components/ui/toast-context";
 import { ToastProvider } from "@/components/ui/toast";
 import { friendlyError } from "@/lib/errors";
@@ -25,6 +22,10 @@ if (!convexUrl) {
   throw new Error("VITE_CONVEX_URL is required to start Boorise.");
 }
 const convex = new ConvexReactClient(convexUrl);
+const AuthPage = lazy(() => import("@/components/auth/AuthPage").then((module) => ({ default: module.AuthPage })));
+const LandingPage = lazy(() => import("@/components/marketing/LandingPage").then((module) => ({ default: module.LandingPage })));
+const OnboardingPage = lazy(() => import("@/components/auth/OnboardingPage").then((module) => ({ default: module.OnboardingPage })));
+const PublicQuotePage = lazy(() => import("@/routes/PublicQuotePage").then((module) => ({ default: module.PublicQuotePage })));
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -58,7 +59,11 @@ function AuthGate({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   if (publicQuoteToken) {
-    return <PublicQuotePage token={publicQuoteToken} />;
+    return (
+      <Suspense fallback={<LoadingScreen label="Chargement du devis..." />}>
+        <PublicQuotePage token={publicQuoteToken} />
+      </Suspense>
+    );
   }
 
   if (isLoading) {
@@ -79,28 +84,32 @@ function PublicAccess() {
     return (
       <>
         <AuthSeo mode={authMode} />
-        <AuthPage
-          initialMode={authMode}
-          onBack={canReturnToLanding() ? () => {
-            setAuthMode(null);
-            window.history.replaceState({}, "", "/");
-          } : undefined}
-        />
+        <Suspense fallback={<LoadingScreen label="Chargement..." />}>
+          <AuthPage
+            initialMode={authMode}
+            onBack={canReturnToLanding() ? () => {
+              setAuthMode(null);
+              window.history.replaceState({}, "", "/");
+            } : undefined}
+          />
+        </Suspense>
       </>
     );
   }
 
   return (
-    <LandingPage
-      onSignIn={() => {
-        setAuthMode("signIn");
-        window.history.replaceState({}, "", "/?auth=signin");
-      }}
-      onSignUp={() => {
-        setAuthMode("signUp");
-        window.history.replaceState({}, "", "/?auth=signup");
-      }}
-    />
+    <Suspense fallback={<LoadingScreen label="Chargement..." />}>
+      <LandingPage
+        onSignIn={() => {
+          setAuthMode("signIn");
+          window.history.replaceState({}, "", "/?auth=signin");
+        }}
+        onSignUp={() => {
+          setAuthMode("signUp");
+          window.history.replaceState({}, "", "/?auth=signup");
+        }}
+      />
+    </Suspense>
   );
 }
 
@@ -123,11 +132,19 @@ function WorkspaceGate({ children }: { children: ReactNode }) {
   }
 
   if (!current?.organization) {
-    return <OnboardingPage />;
+    return (
+      <Suspense fallback={<LoadingScreen label="Chargement..." />}>
+        <OnboardingPage />
+      </Suspense>
+    );
   }
 
   if (!isOrganizationOnboarded(current.organization)) {
-    return <OnboardingPage organization={current.organization} />;
+    return (
+      <Suspense fallback={<LoadingScreen label="Chargement..." />}>
+        <OnboardingPage organization={current.organization} />
+      </Suspense>
+    );
   }
 
   return children;

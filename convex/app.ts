@@ -15,11 +15,88 @@ declare const process: {
 
 const invitationTtlMs = 7 * 24 * 60 * 60 * 1000;
 const teamRoles = v.union(v.literal("admin"), v.literal("member"));
+const operationTypeValidator = v.union(v.literal("goods"), v.literal("services"), v.literal("mixed"));
+const organizationDetailsValidator = {
+  name: v.string(),
+  legalName: v.optional(v.string()),
+  legalForm: v.optional(v.string()),
+  shareCapital: v.optional(v.string()),
+  siren: v.optional(v.string()),
+  siret: v.optional(v.string()),
+  vatNumber: v.optional(v.string()),
+  apeCode: v.optional(v.string()),
+  registerNumber: v.optional(v.string()),
+  registerCity: v.optional(v.string()),
+  email: v.optional(v.string()),
+  phone: v.optional(v.string()),
+  address: v.optional(v.string()),
+  postalCode: v.optional(v.string()),
+  city: v.optional(v.string()),
+  country: v.optional(v.string()),
+  logoUrl: v.optional(v.string()),
+  defaultVatRate: v.number(),
+  defaultHourlyRate: v.optional(v.number()),
+  defaultMarginRate: v.optional(v.number()),
+  quotePrefix: v.optional(v.string()),
+  invoicePrefix: v.optional(v.string()),
+  paymentTermsDays: v.optional(v.number()),
+  quoteValidityDays: v.optional(v.number()),
+  paymentTermsText: v.optional(v.string()),
+  latePenaltyText: v.optional(v.string()),
+  discountTermsText: v.optional(v.string()),
+  taxExemptionText: v.optional(v.string()),
+  quotePricingText: v.optional(v.string()),
+  legalNotice: v.optional(v.string()),
+  bankDetails: v.optional(v.string()),
+  defaultOperationType: v.optional(operationTypeValidator),
+  taxDebitOption: v.optional(v.boolean()),
+  professionalInsurance: v.optional(v.string()),
+  mediatorInfo: v.optional(v.string()),
+  acceptanceText: v.optional(v.string()),
+};
 type TeamRole = "owner" | "admin" | "member";
 type LoginMethods = {
   exists: boolean;
   hasPassword: boolean;
   hasGoogle: boolean;
+};
+type OrganizationDetailsArgs = {
+  name: string;
+  legalName?: string;
+  legalForm?: string;
+  shareCapital?: string;
+  siren?: string;
+  siret?: string;
+  vatNumber?: string;
+  apeCode?: string;
+  registerNumber?: string;
+  registerCity?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
+  logoUrl?: string;
+  defaultVatRate: number;
+  defaultHourlyRate?: number;
+  defaultMarginRate?: number;
+  quotePrefix?: string;
+  invoicePrefix?: string;
+  paymentTermsDays?: number;
+  quoteValidityDays?: number;
+  paymentTermsText?: string;
+  latePenaltyText?: string;
+  discountTermsText?: string;
+  taxExemptionText?: string;
+  quotePricingText?: string;
+  legalNotice?: string;
+  bankDetails?: string;
+  defaultOperationType?: "goods" | "services" | "mixed";
+  taxDebitOption?: boolean;
+  professionalInsurance?: string;
+  mediatorInfo?: string;
+  acceptanceText?: string;
 };
 
 async function requireUser(ctx: QueryCtx | MutationCtx) {
@@ -113,9 +190,7 @@ export const current = query({
 });
 
 export const createOrganization = mutation({
-  args: {
-    name: v.string(),
-  },
+  args: organizationDetailsValidator,
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const existingMembership = await ctx.db
@@ -128,22 +203,9 @@ export const createOrganization = mutation({
     }
 
     const now = Date.now();
+    const details = normalizeOrganizationDetails(args, undefined, { requireLegalIdentity: true });
     const organizationId = await ctx.db.insert("organizations", {
-      name: cleanRequiredString(args.name, "Le nom de l'entreprise"),
-      defaultVatRate: 20,
-      defaultMarginRate: 0,
-      quotePrefix: "D",
-      invoicePrefix: "F",
-      paymentTermsDays: 30,
-      quoteValidityDays: 30,
-      defaultOperationType: "mixed",
-      taxDebitOption: false,
-      paymentTermsText: "Acompte de 30% a la commande, solde a la reception des travaux.",
-      latePenaltyText: "Penalites de retard selon le taux legal en vigueur. Indemnite forfaitaire de recouvrement: 40 EUR.",
-      discountTermsText: "Escompte pour paiement anticipe: neant.",
-      quotePricingText: "Devis gratuit.",
-      legalNotice: "Devis valable sous reserve de disponibilite des materiaux et d'acces normal au chantier.",
-      acceptanceText: "Bon pour accord, date et signature precedees de la mention manuscrite.",
+      ...details,
       createdAt: now,
       updatedAt: now,
     });
@@ -178,85 +240,13 @@ export const createOrganization = mutation({
 });
 
 export const updateOrganization = mutation({
-  args: {
-    name: v.string(),
-    legalName: v.optional(v.string()),
-    legalForm: v.optional(v.string()),
-    shareCapital: v.optional(v.string()),
-    siren: v.optional(v.string()),
-    siret: v.optional(v.string()),
-    vatNumber: v.optional(v.string()),
-    apeCode: v.optional(v.string()),
-    registerNumber: v.optional(v.string()),
-    registerCity: v.optional(v.string()),
-    email: v.optional(v.string()),
-    phone: v.optional(v.string()),
-    address: v.optional(v.string()),
-    postalCode: v.optional(v.string()),
-    city: v.optional(v.string()),
-    country: v.optional(v.string()),
-    logoUrl: v.optional(v.string()),
-    defaultVatRate: v.number(),
-    defaultHourlyRate: v.optional(v.number()),
-    defaultMarginRate: v.optional(v.number()),
-    quotePrefix: v.optional(v.string()),
-    invoicePrefix: v.optional(v.string()),
-    paymentTermsDays: v.optional(v.number()),
-    quoteValidityDays: v.optional(v.number()),
-    paymentTermsText: v.optional(v.string()),
-    latePenaltyText: v.optional(v.string()),
-    discountTermsText: v.optional(v.string()),
-    taxExemptionText: v.optional(v.string()),
-    quotePricingText: v.optional(v.string()),
-    legalNotice: v.optional(v.string()),
-    bankDetails: v.optional(v.string()),
-    defaultOperationType: v.optional(v.union(v.literal("goods"), v.literal("services"), v.literal("mixed"))),
-    taxDebitOption: v.optional(v.boolean()),
-    professionalInsurance: v.optional(v.string()),
-    mediatorInfo: v.optional(v.string()),
-    acceptanceText: v.optional(v.string()),
-  },
+  args: organizationDetailsValidator,
   handler: async (ctx, args) => {
     const { organization } = await requireAdminOrOwner(ctx);
     const now = Date.now();
 
     await ctx.db.patch(organization._id, {
-      name: cleanRequiredString(args.name, "Le nom de l'entreprise"),
-      legalName: cleanOptionalString(args.legalName),
-      legalForm: cleanOptionalString(args.legalForm),
-      shareCapital: cleanOptionalString(args.shareCapital),
-      siren: cleanOptionalString(args.siren),
-      siret: cleanOptionalString(args.siret),
-      vatNumber: cleanOptionalString(args.vatNumber),
-      apeCode: cleanOptionalString(args.apeCode),
-      registerNumber: cleanOptionalString(args.registerNumber),
-      registerCity: cleanOptionalString(args.registerCity),
-      email: cleanOptionalString(args.email),
-      phone: cleanOptionalString(args.phone),
-      address: cleanOptionalString(args.address),
-      postalCode: cleanOptionalString(args.postalCode),
-      city: cleanOptionalString(args.city),
-      country: cleanOptionalString(args.country),
-      logoUrl: cleanOptionalString(args.logoUrl),
-      defaultVatRate: clampRate(args.defaultVatRate, "TVA"),
-      defaultHourlyRate: args.defaultHourlyRate === undefined ? undefined : roundPositive(args.defaultHourlyRate, "Taux horaire"),
-      defaultMarginRate: args.defaultMarginRate === undefined ? undefined : clampRate(args.defaultMarginRate, "Marge"),
-      quotePrefix: cleanOptionalString(args.quotePrefix),
-      invoicePrefix: cleanOptionalString(args.invoicePrefix),
-      paymentTermsDays: clampDays(args.paymentTermsDays ?? 30, "Delai de paiement", 0),
-      quoteValidityDays: clampDays(args.quoteValidityDays ?? 30, "Validite du devis", 1),
-      paymentTermsText: cleanOptionalString(args.paymentTermsText),
-      latePenaltyText: cleanOptionalString(args.latePenaltyText),
-      discountTermsText: cleanOptionalString(args.discountTermsText),
-      taxExemptionText: cleanOptionalString(args.taxExemptionText),
-      quotePricingText: cleanOptionalString(args.quotePricingText),
-      legalNotice: cleanOptionalString(args.legalNotice),
-      bankDetails: cleanOptionalString(args.bankDetails),
-      defaultOperationType: args.defaultOperationType ?? organization.defaultOperationType ?? "mixed",
-      taxDebitOption: args.taxDebitOption ?? false,
-      professionalInsurance: cleanOptionalString(args.professionalInsurance),
-      mediatorInfo: cleanOptionalString(args.mediatorInfo),
-      acceptanceText: cleanOptionalString(args.acceptanceText),
+      ...normalizeOrganizationDetails(args, organization.defaultOperationType, { requireLegalIdentity: false }),
       updatedAt: now,
     });
 
@@ -691,6 +681,106 @@ function clampRate(value: number, label: string) {
     throw new Error(`${label} doit être compris entre 0 et 100`);
   }
   return Math.round(value * 100) / 100;
+}
+
+function normalizeOrganizationDetails(
+  args: OrganizationDetailsArgs,
+  currentOperationType: "goods" | "services" | "mixed" | undefined,
+  options: { requireLegalIdentity: boolean },
+) {
+  const defaultVatRate = clampRate(args.defaultVatRate, "TVA");
+  const siren = cleanOptionalString(args.siren);
+  const siret = cleanOptionalString(args.siret);
+  const address = cleanOptionalString(args.address);
+  const postalCode = cleanOptionalString(args.postalCode);
+  const city = cleanOptionalString(args.city);
+  const country = cleanOptionalString(args.country);
+  const legalForm = cleanOptionalString(args.legalForm);
+  const shareCapital = cleanOptionalString(args.shareCapital);
+  const registerNumber = cleanOptionalString(args.registerNumber);
+  const registerCity = cleanOptionalString(args.registerCity);
+  const vatNumber = cleanOptionalString(args.vatNumber);
+  const taxExemptionText = cleanOptionalString(args.taxExemptionText);
+  const paymentTermsText = cleanOptionalString(args.paymentTermsText);
+  const latePenaltyText = cleanOptionalString(args.latePenaltyText);
+  const discountTermsText = cleanOptionalString(args.discountTermsText);
+  const quotePricingText = cleanOptionalString(args.quotePricingText);
+
+  if (options.requireLegalIdentity) {
+    requireClean(siren, "Le SIREN");
+    requireClean(siret, "Le SIRET");
+    requireClean(address, "L'adresse");
+    requireClean(postalCode, "Le code postal");
+    requireClean(city, "La ville");
+    requireClean(country, "Le pays");
+    requireClean(paymentTermsText, "Les conditions de reglement");
+    requireClean(latePenaltyText, "Les penalites de retard");
+    requireClean(discountTermsText, "L'escompte");
+    requireClean(quotePricingText, "Le prix du devis");
+    if (defaultVatRate > 0) {
+      requireClean(vatNumber, "Le numero de TVA");
+    } else {
+      requireClean(taxExemptionText, "La mention de franchise TVA");
+    }
+  }
+
+  if ((legalForm && !shareCapital) || (!legalForm && shareCapital)) {
+    throw new Error("La forme juridique et le capital social doivent etre renseignes ensemble");
+  }
+  if ((registerNumber && !registerCity) || (!registerNumber && registerCity)) {
+    throw new Error("Le registre et la ville du registre doivent etre renseignes ensemble");
+  }
+  if (defaultVatRate > 0 && !vatNumber && options.requireLegalIdentity) {
+    throw new Error("Le numero de TVA est obligatoire si l'entreprise est assujettie a la TVA");
+  }
+  if (defaultVatRate === 0 && !taxExemptionText && options.requireLegalIdentity) {
+    throw new Error("La mention de franchise TVA est obligatoire si la TVA est a 0%");
+  }
+
+  return {
+    name: cleanRequiredString(args.name, "Le nom de l'entreprise"),
+    legalName: cleanOptionalString(args.legalName),
+    legalForm,
+    shareCapital,
+    siren,
+    siret,
+    vatNumber: defaultVatRate > 0 ? vatNumber : undefined,
+    apeCode: cleanOptionalString(args.apeCode),
+    registerNumber,
+    registerCity,
+    email: cleanOptionalString(args.email),
+    phone: cleanOptionalString(args.phone),
+    address,
+    postalCode,
+    city,
+    country,
+    logoUrl: cleanOptionalString(args.logoUrl),
+    defaultVatRate,
+    defaultHourlyRate: args.defaultHourlyRate === undefined ? undefined : roundPositive(args.defaultHourlyRate, "Taux horaire"),
+    defaultMarginRate: args.defaultMarginRate === undefined ? undefined : clampRate(args.defaultMarginRate, "Marge"),
+    quotePrefix: cleanOptionalString(args.quotePrefix) ?? "D",
+    invoicePrefix: cleanOptionalString(args.invoicePrefix) ?? "F",
+    paymentTermsDays: clampDays(args.paymentTermsDays ?? 30, "Delai de paiement", 0),
+    quoteValidityDays: clampDays(args.quoteValidityDays ?? 30, "Validite du devis", 1),
+    paymentTermsText,
+    latePenaltyText,
+    discountTermsText,
+    taxExemptionText: defaultVatRate === 0 ? taxExemptionText : undefined,
+    quotePricingText,
+    legalNotice: cleanOptionalString(args.legalNotice),
+    bankDetails: cleanOptionalString(args.bankDetails),
+    defaultOperationType: args.defaultOperationType ?? currentOperationType ?? "mixed",
+    taxDebitOption: args.taxDebitOption ?? false,
+    professionalInsurance: cleanOptionalString(args.professionalInsurance),
+    mediatorInfo: cleanOptionalString(args.mediatorInfo),
+    acceptanceText: cleanOptionalString(args.acceptanceText) ?? "Bon pour accord, date et signature precedees de la mention manuscrite.",
+  };
+}
+
+function requireClean(value: string | undefined, label: string) {
+  if (!value) {
+    throw new Error(`${label} est obligatoire`);
+  }
 }
 
 function clampDays(value: number, label: string, min: number) {

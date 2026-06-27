@@ -14,6 +14,7 @@ import { Button, Notice } from "@/components/ui/app";
 import { useToast } from "@/components/ui/toast-context";
 import { ToastProvider } from "@/components/ui/toast";
 import { friendlyError } from "@/lib/errors";
+import { isOrganizationOnboarded } from "@/lib/onboarding";
 import { routeTree } from "@/routeTree";
 
 const router = createRouter({ routeTree });
@@ -107,6 +108,10 @@ function WorkspaceGate({ children }: { children: ReactNode }) {
 
   if (!current?.organization) {
     return <OnboardingPage />;
+  }
+
+  if (!isOrganizationOnboarded(current.organization)) {
+    return <OnboardingPage organization={current.organization} />;
   }
 
   return children;

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "convex/react";
-import { Boxes, BriefcaseBusiness, Edit3, Filter, Package, Plus, Scissors, Trash2 } from "lucide-react";
+import { Boxes, BriefcaseBusiness, Edit3, Filter, Package, Plus, Scissors, Star, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "#convex/_generated/api";
 import type { Doc, Id } from "#convex/_generated/dataModel";
@@ -64,9 +64,12 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
   const createMaterial = useMutation(api.materials.create);
   const updateMaterial = useMutation(api.materials.update);
   const archiveMaterial = useMutation(api.materials.archive);
+  const toggleMaterialFavorite = useMutation(api.materials.toggleFavorite);
+  const importMaterialRows = useMutation(api.materials.importCsvRows);
   const createService = useMutation(api.services.create);
   const updateService = useMutation(api.services.update);
   const archiveService = useMutation(api.services.archive);
+  const toggleServiceFavorite = useMutation(api.services.toggleFavorite);
   const [tab, setTab] = useState<"materials" | "services">(initialTab);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -76,6 +79,8 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [materialModal, setMaterialModal] = useState(false);
   const [serviceModal, setServiceModal] = useState(false);
+  const [importModal, setImportModal] = useState(false);
+  const [csvText, setCsvText] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const materialNeedsLength = ["metre", "m2", "m3"].includes(materialForm.unit);
@@ -107,7 +112,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(normalized));
       return matchCategory && matchSearch;
-    });
+    }).sort((left, right) => Number(right.favorite ?? false) - Number(left.favorite ?? false));
   }, [materials, search, category]);
 
   const serviceRows = useMemo(() => {
@@ -119,7 +124,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
       return [service.name, service.description, service.unit]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(normalized));
-    });
+    }).sort((left, right) => Number(right.favorite ?? false) - Number(left.favorite ?? false));
   }, [services, search]);
 
   const materialStats = useMemo(() => {
@@ -309,10 +314,50 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
     }
   }
 
+  async function favoriteMaterial(material: Material) {
+    try {
+      await toggleMaterialFavorite({ materialId: material._id, favorite: !(material.favorite ?? false) });
+    } catch (err) {
+      const message = friendlyError(err, "Favori impossible.");
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  async function favoriteService(service: Service) {
+    try {
+      await toggleServiceFavorite({ serviceId: service._id, favorite: !(service.favorite ?? false) });
+    } catch (err) {
+      const message = friendlyError(err, "Favori impossible.");
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  async function importCsv() {
+    setPending(true);
+    setError(null);
+    try {
+      const rows = parseMaterialsCsv(csvText);
+      if (rows.length === 0) {
+        throw new Error("Aucune ligne exploitable dans le CSV.");
+      }
+      const result = await importMaterialRows({ rows });
+      setImportModal(false);
+      setCsvText("");
+      toast.success(`${result.imported} materiau(x) importe(s).`);
+    } catch (err) {
+      const message = friendlyError(err, "Import impossible.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Catalogue"
         title={tab === "materials" ? "Materiaux" : "Prestations"}
         description={
           tab === "materials"
@@ -322,6 +367,10 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
         actions={
           tab === "materials" ? (
             <>
+              <Button variant="outline" onClick={() => setImportModal(true)}>
+                <Upload className="h-4 w-4" />
+                Import CSV
+              </Button>
               <Button variant="outline" onClick={openCreateService}>
                 <Plus className="h-4 w-4" />
                 Prestation
@@ -427,7 +476,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
                   sortValue: (material) => material.name,
                   render: (material) => (
                     <button className="material-table-name" onClick={() => openEditMaterial(material)}>
-                      <strong>{material.name}</strong>
+                      <strong>{material.favorite ? "★ " : ""}{material.name}</strong>
                       <span>{material.reference ?? "Sans reference"}</span>
                     </button>
                   ),
@@ -454,6 +503,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
                   sortable: false,
                   render: (material) => (
                     <div className="row-actions">
+                      <IconButton label={material.favorite ? "Retirer des favoris" : "Ajouter aux favoris"} variant="outline" onClick={() => void favoriteMaterial(material)}><Star className={material.favorite ? "h-4 w-4 fill-current" : "h-4 w-4"} /></IconButton>
                       <IconButton label="Modifier" onClick={() => openEditMaterial(material)}><Edit3 className="h-4 w-4" /></IconButton>
                       <IconButton label="Archiver" variant="danger" onClick={() => void removeMaterial(material._id, material.name)}><Trash2 className="h-4 w-4" /></IconButton>
                     </div>
@@ -469,7 +519,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
               rowKey={(service) => service._id}
               empty={<EmptyState title="Aucune prestation" action={<Button onClick={openCreateService}>Ajouter une prestation</Button>} />}
               columns={[
-                { key: "name", header: "Nom", sortValue: (service) => service.name, render: (service) => <strong>{service.name}</strong> },
+                { key: "name", header: "Nom", sortValue: (service) => service.name, render: (service) => <strong>{service.favorite ? "★ " : ""}{service.name}</strong> },
                 { key: "description", header: "Description", sortValue: (service) => service.description ?? "", render: (service) => service.description ?? "-" },
                 { key: "unit", header: "Unite", sortValue: (service) => service.unit, render: (service) => service.unit },
                 { key: "price", header: "Prix HT", sortValue: (service) => service.unitPriceHt, render: (service) => formatCurrency(service.unitPriceHt) },
@@ -480,6 +530,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
                   sortable: false,
                   render: (service) => (
                     <div className="row-actions">
+                      <IconButton label={service.favorite ? "Retirer des favoris" : "Ajouter aux favoris"} variant="outline" onClick={() => void favoriteService(service)}><Star className={service.favorite ? "h-4 w-4 fill-current" : "h-4 w-4"} /></IconButton>
                       <IconButton label="Modifier" onClick={() => openEditService(service)}><Edit3 className="h-4 w-4" /></IconButton>
                       <IconButton label="Archiver" variant="danger" onClick={() => void removeService(service._id, service.name)}><Trash2 className="h-4 w-4" /></IconButton>
                     </div>
@@ -490,6 +541,31 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
           )}
         </Panel>
       </div>
+
+      <Modal
+        open={importModal}
+        title="Importer des materiaux"
+        description="Colle un CSV avec en-tetes. Les lignes sont creees comme des materiaux actifs."
+        onClose={() => setImportModal(false)}
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setImportModal(false)}>Annuler</Button>
+            <Button disabled={pending} onClick={() => void importCsv()}>
+              <Upload className="h-4 w-4" />
+              Importer
+            </Button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          {error ? <Notice kind="error">{error}</Notice> : null}
+          <Notice kind="info">Colonnes acceptees: nom, reference, categorie, fournisseur, description, prix_achat_ht, unite, divisible, quantite_par_lot, longueur, largeur, hauteur, taux_perte_defaut.</Notice>
+          <Field label="CSV" required hint="Separateur virgule ou point-virgule. Exemple: nom;prix_achat_ht;unite;divisible;taux_perte_defaut">
+            <TextArea className="csv-import-area" value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder={"nom;prix_achat_ht;unite;divisible;taux_perte_defaut\nPoutre 2m;12.5;piece;non;5\nPeinture blanche;38;litre;oui;10"} />
+          </Field>
+        </div>
+      </Modal>
 
       <Modal
         open={materialModal}
@@ -612,6 +688,106 @@ function formatDimensions(material: Material) {
     return "-";
   }
   return [material.length, material.width, material.height].map((value) => value ?? "-").join(" x ");
+}
+
+function parseMaterialsCsv(input: string) {
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) {
+    return [];
+  }
+  const separator = lines[0].includes(";") ? ";" : ",";
+  const headers = splitCsvLine(lines[0], separator).map(normalizeHeader);
+  const rows = [];
+  for (const line of lines.slice(1, 201)) {
+    const values = splitCsvLine(line, separator);
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index]?.trim() ?? ""]));
+    const name = pick(row, "nom", "name");
+    if (!name) {
+      continue;
+    }
+    const unit = normalizeMaterialUnit(pick(row, "unite", "unit"));
+    rows.push({
+      name,
+      reference: optional(pick(row, "reference", "ref")),
+      category: optional(pick(row, "categorie", "category")),
+      supplier: optional(pick(row, "fournisseur", "supplier")),
+      description: optional(pick(row, "description")),
+      unit,
+      purchasePriceHt: parseFrenchNumber(pick(row, "prix_achat_ht", "prix", "purchasepriceht")),
+      divisible: parseBoolean(pick(row, "divisible"), true),
+      quantityPerLot: optionalParsedNumber(pick(row, "quantite_par_lot", "quantityperlot")),
+      length: optionalParsedNumber(pick(row, "longueur", "length")),
+      width: optionalParsedNumber(pick(row, "largeur", "width")),
+      height: optionalParsedNumber(pick(row, "hauteur", "height")),
+      defaultWasteRate: optionalParsedNumber(pick(row, "taux_perte_defaut", "perte", "defaultwasterate")) ?? 0,
+      active: true,
+    });
+  }
+  return rows;
+}
+
+function splitCsvLine(line: string, separator: string) {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (const character of line) {
+    if (character === "\"") {
+      quoted = !quoted;
+      continue;
+    }
+    if (character === separator && !quoted) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  cells.push(current);
+  return cells;
+}
+
+function normalizeHeader(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, "");
+}
+
+function pick(row: Record<string, string>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = row[normalizeHeader(key)];
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function normalizeMaterialUnit(value: string): MaterialUnit {
+  const normalized = normalizeHeader(value);
+  const allowed: MaterialUnit[] = ["piece", "metre", "m2", "m3", "litre", "kilogramme", "lot"];
+  return allowed.includes(normalized as MaterialUnit) ? normalized as MaterialUnit : "piece";
+}
+
+function parseBoolean(value: string, fallback: boolean) {
+  const normalized = normalizeHeader(value);
+  if (!normalized) {
+    return fallback;
+  }
+  return ["1", "oui", "true", "yes", "y"].includes(normalized);
+}
+
+function parseFrenchNumber(value: string) {
+  const parsed = Number(value.replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function optionalParsedNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return parseFrenchNumber(trimmed);
 }
 
 function optional(value: string) {

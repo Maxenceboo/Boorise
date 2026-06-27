@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /stats
+Disallow: /clients
+Disallow: /materiaux
+Disallow: /prestations
+Disallow: /devis
+Disallow: /factures
+Disallow: /parametres
+Disallow: /equipe
+Disallow: /public/quote/
+
+Sitemap: https://boorise.fr/sitemap.xml

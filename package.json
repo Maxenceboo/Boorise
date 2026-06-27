@@ -6,11 +6,16 @@
   "scripts": {
     "dev": "concurrently -k --names BACK,FRONT --prefix-colors magenta.bold,cyan.bold \"npm run convex:dev\" \"npm run frontend:dev\"",
     "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:lint": "npm --prefix frontend run lint",
+    "frontend:build": "npm --prefix frontend run build",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy",
     "convex:codegen": "convex codegen",
     "convex:ai-files": "convex ai-files install",
-    "test:calc": "tsx --test tests/materialCalculation.test.ts"
+    "check": "npm run convex:codegen && npx tsc -p convex/tsconfig.json && npm run frontend:lint && npm run frontend:build && npm test",
+    "test": "npm run test:calc && npm run test:business",
+    "test:calc": "tsx --test tests/materialCalculation.test.ts",
+    "test:business": "tsx --test tests/documentLifecycle.test.ts"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",

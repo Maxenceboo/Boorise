@@ -118,7 +118,6 @@ export function AuthPage({ initialMode, onBack }: { initialMode?: AuthMode; onBa
           </div>
         </div>
         <div>
-          <div className="eyebrow border-white/15 bg-white/10 text-cyan-100">Chiffrage fiable</div>
           <h1>Gerer clients, materiaux et devis sans friction.</h1>
           <p>
             Une interface simple pour preparer les chantiers, calculer les achats reels et suivre les documents de vente.
@@ -143,7 +142,6 @@ export function AuthPage({ initialMode, onBack }: { initialMode?: AuthMode; onBa
             </div>
           </div>
 
-          <div className="eyebrow">Acces securise</div>
           {onBack && mode !== "resetVerify" ? (
             <button className="auth-back" type="button" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />

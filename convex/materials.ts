@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { cleanOptionalString, cleanRequiredString, requireCurrentOrganizationId } from "./app";
+import { cleanOptionalString, cleanRequiredString, logActivity, requireCatalogWrite, requireCurrentOrganizationId } from "./app";
 import { calculateMaterial } from "./materialCalculation";
 
 const unitValidator = v.union(
@@ -27,6 +27,7 @@ const materialArgs = {
   height: v.optional(v.number()),
   defaultWasteRate: v.number(),
   supplier: v.optional(v.string()),
+  favorite: v.optional(v.boolean()),
   active: v.optional(v.boolean()),
 };
 
@@ -62,15 +63,19 @@ export const get = query({
 export const create = mutation({
   args: materialArgs,
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireCatalogWrite(ctx);
+    const organizationId = organization._id;
     const now = Date.now();
-    return await ctx.db.insert("materials", {
+    const materialId = await ctx.db.insert("materials", {
       organizationId,
       ...normalizeMaterial(args),
+      favorite: args.favorite ?? false,
       active: args.active ?? true,
       createdAt: now,
       updatedAt: now,
     });
+    await logActivity(ctx, "material.created", "material", materialId, `Materiau cree: ${args.name}`);
+    return materialId;
   },
 });
 
@@ -80,7 +85,8 @@ export const update = mutation({
     ...materialArgs,
   },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireCatalogWrite(ctx);
+    const organizationId = organization._id;
     const material = await ctx.db.get(args.materialId);
     if (!material || material.organizationId !== organizationId) {
       throw new Error("Matériau introuvable");
@@ -88,9 +94,11 @@ export const update = mutation({
 
     await ctx.db.patch(args.materialId, {
       ...normalizeMaterial(args),
+      favorite: args.favorite ?? material.favorite ?? false,
       active: args.active ?? material.active,
       updatedAt: Date.now(),
     });
+    await logActivity(ctx, "material.updated", "material", args.materialId, `Materiau modifie: ${args.name}`);
 
     return args.materialId;
   },
@@ -99,7 +107,8 @@ export const update = mutation({
 export const archive = mutation({
   args: { materialId: v.id("materials") },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireCatalogWrite(ctx);
+    const organizationId = organization._id;
     const material = await ctx.db.get(args.materialId);
     if (!material || material.organizationId !== organizationId) {
       throw new Error("Matériau introuvable");
@@ -109,8 +118,56 @@ export const archive = mutation({
       active: false,
       updatedAt: Date.now(),
     });
+    await logActivity(ctx, "material.archived", "material", args.materialId, `Materiau archive: ${material.name}`);
 
     return args.materialId;
+  },
+});
+
+export const toggleFavorite = mutation({
+  args: { materialId: v.id("materials"), favorite: v.boolean() },
+  handler: async (ctx, args) => {
+    const { organization } = await requireCatalogWrite(ctx);
+    const organizationId = organization._id;
+    const material = await ctx.db.get(args.materialId);
+    if (!material || material.organizationId !== organizationId) {
+      throw new Error("Materiau introuvable");
+    }
+
+    await ctx.db.patch(args.materialId, {
+      favorite: args.favorite,
+      updatedAt: Date.now(),
+    });
+    await logActivity(ctx, "material.favorite_updated", "material", args.materialId, `${args.favorite ? "Favori ajoute" : "Favori retire"}: ${material.name}`);
+
+    return args.materialId;
+  },
+});
+
+export const importCsvRows = mutation({
+  args: {
+    rows: v.array(v.object(materialArgs)),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireCatalogWrite(ctx);
+    const organizationId = organization._id;
+    const now = Date.now();
+    const rows = args.rows.slice(0, 200);
+    const importedIds = [];
+
+    for (const row of rows) {
+      importedIds.push(await ctx.db.insert("materials", {
+        organizationId,
+        ...normalizeMaterial(row),
+        favorite: row.favorite ?? false,
+        active: row.active ?? true,
+        createdAt: now,
+        updatedAt: now,
+      }));
+    }
+
+    await logActivity(ctx, "material.imported", "material", undefined, `${importedIds.length} materiau(x) importes par CSV`);
+    return { imported: importedIds.length, skipped: Math.max(0, args.rows.length - rows.length) };
   },
 });
 
@@ -151,6 +208,7 @@ function normalizeMaterial(args: {
   height?: number;
   defaultWasteRate: number;
   supplier?: string;
+  favorite?: boolean;
 }) {
   if (!Number.isFinite(args.purchasePriceHt) || args.purchasePriceHt < 0) {
     throw new Error("Le prix d'achat doit être positif");

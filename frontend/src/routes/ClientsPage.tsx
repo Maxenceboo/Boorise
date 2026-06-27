@@ -29,7 +29,7 @@ import { friendlyError } from "@/lib/errors";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 type Client = Doc<"clients">;
-type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced";
+type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced" | "void";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "void";
 
 const quoteStatusLabels: Record<QuoteStatus, string> = {
@@ -38,6 +38,7 @@ const quoteStatusLabels: Record<QuoteStatus, string> = {
   accepted: "Accepte",
   refused: "Refuse",
   invoiced: "Facture",
+  void: "Annule",
 };
 
 const invoiceStatusLabels: Record<InvoiceStatus, string> = {
@@ -102,6 +103,12 @@ export function ClientsPage() {
   }, [clients, search]);
 
   useEffect(() => {
+    const focusedClientId = sessionStorage.getItem("boorise:focusClientId");
+    if (focusedClientId) {
+      sessionStorage.removeItem("boorise:focusClientId");
+      setSelectedClientId(focusedClientId as Id<"clients">);
+      return;
+    }
     if (!selectedClientId && rows[0]) {
       setSelectedClientId(rows[0]._id);
     }
@@ -256,7 +263,6 @@ export function ClientsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="CRM"
         title="Clients"
         description="Une base client simple, rapide a filtrer, et reutilisable dans les devis."
         actions={
@@ -435,12 +441,22 @@ function ClientActivityPanel({
         client: Client;
         quotes: Doc<"quotes">[];
         invoices: Doc<"invoices">[];
+        unpaidInvoices: Doc<"invoices">[];
         totals: {
           quotesTtc: number;
           invoicesTtc: number;
+          paidTtc: number;
           unpaidTtc: number;
           acceptedQuotes: number;
+          refusedQuotes: number;
+          draftQuotes: number;
+          sentQuotes: number;
           unpaidInvoices: number;
+          paidInvoices: number;
+          conversionRate: number | null;
+          averageAcceptedQuoteTtc: number;
+          lastQuoteAt: number | null;
+          lastInvoiceAt: number | null;
         };
       }
     | null
@@ -486,11 +502,36 @@ function ClientActivityPanel({
       </div>
 
       <div className="client-kpis">
-        <ClientKpi icon={<FileText className="h-4 w-4" />} label="Devis" value={formatCurrency(activity.totals.quotesTtc)} detail={`${activity.quotes.length} recent(s)`} />
-        <ClientKpi icon={<ReceiptText className="h-4 w-4" />} label="Factures" value={formatCurrency(activity.totals.invoicesTtc)} detail={`${activity.invoices.length} recente(s)`} />
+        <ClientKpi icon={<Euro className="h-4 w-4" />} label="CA encaisse" value={formatCurrency(activity.totals.paidTtc)} detail={`${activity.totals.paidInvoices} facture(s) payee(s)`} />
+        <ClientKpi icon={<ReceiptText className="h-4 w-4" />} label="Facture" value={formatCurrency(activity.totals.invoicesTtc)} detail={`${activity.invoices.length} recente(s)`} />
         <ClientKpi icon={<Euro className="h-4 w-4" />} label="A encaisser" value={formatCurrency(activity.totals.unpaidTtc)} detail={`${activity.totals.unpaidInvoices} facture(s)`} />
-        <ClientKpi icon={<FileText className="h-4 w-4" />} label="Devis gagnes" value={activity.totals.acceptedQuotes} detail="acceptes ou factures" />
+        <ClientKpi icon={<FileText className="h-4 w-4" />} label="Transformation" value={activity.totals.conversionRate === null ? "-" : `${activity.totals.conversionRate}%`} detail={`${activity.totals.acceptedQuotes} gagne(s), ${activity.totals.refusedQuotes} perdu(s)`} />
+        <ClientKpi icon={<FileText className="h-4 w-4" />} label="Panier moyen" value={formatCurrency(activity.totals.averageAcceptedQuoteTtc)} detail="devis acceptes/factures" />
+        <ClientKpi icon={<ReceiptText className="h-4 w-4" />} label="Dernier contact" value={activity.totals.lastQuoteAt ? formatDate(activity.totals.lastQuoteAt) : "-"} detail={activity.totals.lastInvoiceAt ? `Derniere facture ${formatDate(activity.totals.lastInvoiceAt)}` : "Aucune facture"} />
       </div>
+
+      {activity.unpaidInvoices.length > 0 ? (
+        <section className="client-risk-panel">
+          <div>
+            <strong>Factures a suivre</strong>
+            <span>{formatCurrency(activity.totals.unpaidTtc)} non encaisse(s)</span>
+          </div>
+          <div className="client-history-list">
+            {activity.unpaidInvoices.map((invoice) => (
+              <div className="client-history-row" key={invoice._id}>
+                <div>
+                  <strong>{invoice.number}</strong>
+                  <span>Echeance {formatDate(invoice.dueDate)}</span>
+                </div>
+                <div>
+                  <Badge tone={invoiceTone(invoice.status as InvoiceStatus)}>{invoiceStatusLabels[invoice.status as InvoiceStatus]}</Badge>
+                  <b>{formatCurrency(invoice.totalTtc)}</b>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="client-history-grid">
         <section>
@@ -571,6 +612,7 @@ function quoteTone(status: QuoteStatus) {
     accepted: "emerald",
     refused: "rose",
     invoiced: "cyan",
+    void: "rose",
   };
   return tones[status];
 }

@@ -76,6 +76,11 @@ export function SettingsPage() {
         professionalInsurance: hasProfessionalInsurance ? formOptionalString(data.get("professionalInsurance")) : undefined,
         mediatorInfo: hasConsumerMediator ? formOptionalString(data.get("mediatorInfo")) : undefined,
         acceptanceText: formOptionalString(data.get("acceptanceText")),
+        accountingClientAccount: formOptionalString(data.get("accountingClientAccount")),
+        accountingBankAccount: formOptionalString(data.get("accountingBankAccount")),
+        accountingVatCollectedAccount: formOptionalString(data.get("accountingVatCollectedAccount")),
+        accountingSalesGoodsAccount: formOptionalString(data.get("accountingSalesGoodsAccount")),
+        accountingSalesServicesAccount: formOptionalString(data.get("accountingSalesServicesAccount")),
       });
       setNotice({ kind: "success", message: mode === "auto" ? "Sauvegarde automatique effectuee." : "Profil entreprise enregistre." });
     } catch (err) {
@@ -93,7 +98,6 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Entreprise"
         title="Mon entreprise"
         description="Les informations legales et valeurs par defaut utilisees dans les devis et factures."
       />
@@ -245,6 +249,14 @@ export function SettingsPage() {
               <Field label="Acceptation devis" optional>
                 <TextArea name="acceptanceText" defaultValue={organization.acceptanceText ?? ""} placeholder="Bon pour accord, date et signature..." />
               </Field>
+            </FormSection>
+
+            <FormSection title="Comptabilite" description="Comptes utilises dans l'export comptable des factures et reglements.">
+              <Field label="Compte client" optional><TextInput name="accountingClientAccount" defaultValue={organization.accountingClientAccount ?? "411000"} /></Field>
+              <Field label="Compte banque" optional><TextInput name="accountingBankAccount" defaultValue={organization.accountingBankAccount ?? "512000"} /></Field>
+              <Field label="Compte TVA collectee" optional><TextInput name="accountingVatCollectedAccount" defaultValue={organization.accountingVatCollectedAccount ?? "445710"} /></Field>
+              <Field label="Compte ventes de biens" optional><TextInput name="accountingSalesGoodsAccount" defaultValue={organization.accountingSalesGoodsAccount ?? "707000"} /></Field>
+              <Field label="Compte prestations" optional><TextInput name="accountingSalesServicesAccount" defaultValue={organization.accountingSalesServicesAccount ?? "706000"} /></Field>
             </FormSection>
           </form>
         )}

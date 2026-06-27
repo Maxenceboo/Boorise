@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { Check, Eye, EyeOff, GripVertical, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { CalendarRange, Check, Eye, EyeOff, GripVertical, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -22,6 +22,7 @@ type WidgetId = "financial" | "pipeline" | "documents" | "alerts" | "margin" | "
 type WidgetSize = "normal" | "wide";
 type MetricFormat = "currency" | "number" | "percent";
 type CustomStatDisplay = "number" | "target";
+type PeriodPreset = "month" | "quarter" | "year" | "custom";
 
 type WidgetConfig = {
   id: WidgetId;
@@ -55,6 +56,7 @@ type MetricKey =
   | "overdueInvoices";
 
 type DashboardStats = typeof api.app.dashboard["_returnType"];
+type BusinessPeriodStats = typeof api.app.businessStats["_returnType"];
 
 const storageKey = "boorise:stats-layout";
 const customStorageKey = "boorise:custom-stats";
@@ -93,6 +95,11 @@ const metricOptions: Array<{
 
 export function StatsPage() {
   const dashboard = useQuery(api.app.dashboard);
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("month");
+  const [customStart, setCustomStart] = useState(dateInput(startOfMonth(new Date())));
+  const [customEnd, setCustomEnd] = useState(dateInput(endOfDay(new Date())));
+  const periodRange = useMemo(() => buildPeriodRange(periodPreset, customStart, customEnd), [periodPreset, customStart, customEnd]);
+  const periodStats = useQuery(api.app.businessStats, { startAt: periodRange.startAt, endAt: periodRange.endAt });
   const [widgets, setWidgets] = useState(loadWidgetConfig);
   const [customStats, setCustomStats] = useState(loadCustomStats);
   const [customForm, setCustomForm] = useState({ label: "", metricKey: "quotesTtc" as MetricKey, display: "number" as CustomStatDisplay, target: "" });
@@ -187,15 +194,25 @@ export function StatsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Analyse"
         title="Stats"
-        description="Indicateurs, graphiques et vues configurables."
+        description="Indicateurs, graphiques, periode business et vues configurables."
         actions={
           <Button type="button" variant={editMode ? "secondary" : "outline"} onClick={() => setEditMode((current) => !current)}>
             {editMode ? <Check className="h-4 w-4" /> : <SlidersHorizontal className="h-4 w-4" />}
             {editMode ? "Terminer" : "Personnaliser"}
           </Button>
         }
+      />
+
+      <PeriodBusinessPanel
+        preset={periodPreset}
+        onPresetChange={setPeriodPreset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onCustomStartChange={setCustomStart}
+        onCustomEndChange={setCustomEnd}
+        periodLabel={periodRange.label}
+        stats={periodStats}
       />
 
       <div className={cn("stats-layout", editMode && "stats-layout-editing")}>
@@ -305,6 +322,65 @@ export function StatsPage() {
         </Panel> : null}
       </div>
     </div>
+  );
+}
+
+function PeriodBusinessPanel({
+  preset,
+  onPresetChange,
+  customStart,
+  customEnd,
+  onCustomStartChange,
+  onCustomEndChange,
+  periodLabel,
+  stats,
+}: {
+  preset: PeriodPreset;
+  onPresetChange: (preset: PeriodPreset) => void;
+  customStart: string;
+  customEnd: string;
+  onCustomStartChange: (value: string) => void;
+  onCustomEndChange: (value: string) => void;
+  periodLabel: string;
+  stats: BusinessPeriodStats | undefined;
+}) {
+  return (
+    <Panel
+      title="Pilotage par periode"
+      description={periodLabel}
+      actions={<CalendarRange className="h-5 w-5 text-[#622B86]" />}
+      className="period-business-panel"
+    >
+      <div className="period-controls">
+        <Field label="Periode" required>
+          <SelectInput value={preset} onChange={(event) => onPresetChange(event.target.value as PeriodPreset)}>
+            <option value="month">Mois en cours</option>
+            <option value="quarter">Trimestre en cours</option>
+            <option value="year">Annee en cours</option>
+            <option value="custom">Personnalisee</option>
+          </SelectInput>
+        </Field>
+        {preset === "custom" ? (
+          <>
+            <Field label="Debut" required>
+              <TextInput type="date" value={customStart} onChange={(event) => onCustomStartChange(event.target.value)} />
+            </Field>
+            <Field label="Fin" required>
+              <TextInput type="date" value={customEnd} onChange={(event) => onCustomEndChange(event.target.value)} />
+            </Field>
+          </>
+        ) : null}
+      </div>
+
+      <div className="business-kpi-grid">
+        <StatsKpi label="CA signe" value={formatCurrency(stats?.totals.signedRevenueTtc ?? 0)} />
+        <StatsKpi label="CA facture" value={formatCurrency(stats?.totals.billedRevenueTtc ?? 0)} />
+        <StatsKpi label="Taux acceptation" value={`${(stats?.totals.acceptanceRate ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })}%`} />
+        <StatsKpi label="Panier moyen" value={formatCurrency(stats?.totals.averageBasketTtc ?? 0)} />
+        <StatsKpi label="Marge reelle" value={formatCurrency(stats?.totals.realMarginHt ?? 0)} />
+        <StatsKpi label="Taux marge" value={`${(stats?.totals.realMarginRate ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })}%`} />
+      </div>
+    </Panel>
   );
 }
 
@@ -494,4 +570,54 @@ function readJson<T>(key: string): T | null {
   } catch {
     return null;
   }
+}
+
+function buildPeriodRange(preset: PeriodPreset, customStart: string, customEnd: string) {
+  const now = new Date();
+  if (preset === "quarter") {
+    const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+    const start = new Date(now.getFullYear(), quarterStartMonth, 1);
+    const end = endOfDay(new Date(now.getFullYear(), quarterStartMonth + 3, 0));
+    return { startAt: start.getTime(), endAt: end.getTime(), label: `Du ${formatDateLabel(start)} au ${formatDateLabel(end)}` };
+  }
+  if (preset === "year") {
+    const start = new Date(now.getFullYear(), 0, 1);
+    const end = endOfDay(new Date(now.getFullYear(), 11, 31));
+    return { startAt: start.getTime(), endAt: end.getTime(), label: `Annee ${now.getFullYear()}` };
+  }
+  if (preset === "custom") {
+    const start = parseDateInput(customStart, startOfMonth(now));
+    const end = endOfDay(parseDateInput(customEnd, now));
+    return { startAt: start.getTime(), endAt: end.getTime(), label: `Du ${formatDateLabel(start)} au ${formatDateLabel(end)}` };
+  }
+
+  const start = startOfMonth(now);
+  const end = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  return { startAt: start.getTime(), endAt: end.getTime(), label: `Mois de ${now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}` };
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function parseDateInput(value: string, fallback: Date) {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isFinite(parsed.getTime()) ? parsed : fallback;
+}
+
+function dateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateLabel(date: Date) {
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }

@@ -1,36 +1,41 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { MailPlus, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
+import { Clock3, MailPlus, RefreshCw, ShieldCheck, Trash2, UserRoundPlus, X } from "lucide-react";
 import { api } from "#convex/_generated/api";
 import type { Id } from "#convex/_generated/dataModel";
 import { Badge, Button, DataTable, Field, Notice, PageHeader, Panel, SelectInput, StatCard, TextInput } from "@/components/ui/app";
 import { useToast } from "@/components/ui/toast-context";
 import { friendlyError } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 
-type TeamRole = "owner" | "admin" | "member";
+type TeamRole = "owner" | "admin" | "sales" | "readonly" | "member";
 type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
+type InviteRole = "admin" | "sales" | "readonly";
 
 export function TeamPage() {
   const toast = useToast();
   const team = useQuery(api.app.team);
+  const activity = useQuery(api.app.activityLog);
   const inviteMember = useAction(api.app.inviteMember);
+  const resendInvitation = useAction(api.app.resendInvitation);
   const updateMemberRole = useMutation(api.app.updateMemberRole);
   const removeMember = useMutation(api.app.removeMember);
   const revokeInvitation = useMutation(api.app.revokeInvitation);
   const [notice, setNotice] = useState<{ kind: "success" | "error" | "info"; message: string } | null>(null);
   const [pending, setPending] = useState<string | null>(null);
 
-  const canManageTeam = team?.currentRole === "owner" || team?.currentRole === "admin";
-  const canManageRoles = team?.currentRole === "owner";
-  const pendingInvitations = team?.invitations.filter((invitation) => invitation.status === "pending") ?? [];
+  const currentRole = normalizeRole(team?.currentRole);
+  const canManageTeam = currentRole === "owner" || currentRole === "admin";
+  const canManageRoles = currentRole === "owner";
+  const pendingInvitations = team?.invitations.filter((invitation) => displayInvitationStatus(invitation) === "pending") ?? [];
 
   async function handleInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice(null);
     const data = new FormData(event.currentTarget);
     const email = String(data.get("inviteEmail") ?? "");
-    const role = String(data.get("inviteRole") ?? "member") as "admin" | "member";
+    const role = String(data.get("inviteRole") ?? "sales") as InviteRole;
     setPending("invite");
     try {
       await inviteMember({ email, role });
@@ -45,7 +50,7 @@ export function TeamPage() {
     }
   }
 
-  async function changeRole(memberId: Id<"organizationMembers">, role: "admin" | "member") {
+  async function changeRole(memberId: Id<"organizationMembers">, role: InviteRole) {
     setNotice(null);
     setPending(memberId);
     try {
@@ -90,10 +95,24 @@ export function TeamPage() {
     }
   }
 
+  async function resend(invitationId: Id<"organizationInvitations">) {
+    setNotice(null);
+    setPending(`resend-${invitationId}`);
+    try {
+      await resendInvitation({ invitationId });
+      setNotice({ kind: "success", message: "Invitation renvoyee avec une nouvelle expiration." });
+    } catch (err) {
+      const message = friendlyError(err, "Renvoi impossible.");
+      setNotice({ kind: "error", message });
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Administration"
         title="Equipe"
         description="Invite les collaborateurs, attribue les roles et garde le controle sur les acces a l'ERP."
       />
@@ -103,6 +122,15 @@ export function TeamPage() {
         <StatCard icon={<MailPlus className="h-4 w-4" />} label="Invitations" value={pendingInvitations.length} detail="Liens valables 7 jours" tone="amber" />
         <StatCard icon={<ShieldCheck className="h-4 w-4" />} label="Ton role" value={team ? roleLabel(team.currentRole) : "..."} detail="Droits appliques au backend" tone="rose" />
       </div>
+
+      <Panel title="Droits disponibles" description="Les roles sont appliques cote serveur, pas seulement dans l'interface.">
+        <div className="role-matrix">
+          <RoleCard role="Proprietaire" detail="Tout l'ERP, membres, roles, entreprise et facturation." />
+          <RoleCard role="Admin" detail="Parametrage, catalogue, equipe hors proprietaire et operations." />
+          <RoleCard role="Commercial" detail="Clients, devis, suivi commercial et factures. Pas de catalogue ni roles." />
+          <RoleCard role="Lecture seule" detail="Consultation uniquement. Aucune creation, modification ou suppression." />
+        </div>
+      </Panel>
 
       <Panel title="Inviter un collaborateur" description="Le lien est envoye par email. Le collaborateur doit se connecter ou creer un compte pour rejoindre l'entreprise.">
         {notice ? <Notice kind={notice.kind}>{notice.message}</Notice> : null}
@@ -114,8 +142,9 @@ export function TeamPage() {
               <TextInput name="inviteEmail" type="email" placeholder="prenom@entreprise.fr" required />
             </Field>
             <Field label="Role" required>
-              <SelectInput name="inviteRole" defaultValue="member">
-                <option value="member">Membre</option>
+              <SelectInput name="inviteRole" defaultValue="sales">
+                <option value="sales">Commercial</option>
+                <option value="readonly">Lecture seule</option>
                 {team.currentRole === "owner" ? <option value="admin">Administrateur</option> : null}
               </SelectInput>
             </Field>
@@ -155,7 +184,7 @@ export function TeamPage() {
                 key: "role",
                 header: "Role",
                 sortValue: (member) => roleOrder(member.role),
-                render: (member) => <Badge tone={member.role === "owner" ? "rose" : member.role === "admin" ? "indigo" : "slate"}>{roleLabel(member.role)}</Badge>,
+                render: (member) => <Badge tone={roleTone(member.role)}>{roleLabel(member.role)}</Badge>,
               },
               {
                 key: "actions",
@@ -168,9 +197,10 @@ export function TeamPage() {
                         className="h-9 min-w-32"
                         disabled={pending === member._id}
                         value={member.role}
-                        onChange={(event) => void changeRole(member._id, event.target.value as "admin" | "member")}
+                        onChange={(event) => void changeRole(member._id, event.target.value as InviteRole)}
                       >
-                        <option value="member">Membre</option>
+                        <option value="sales">Commercial</option>
+                        <option value="readonly">Lecture seule</option>
                         <option value="admin">Administrateur</option>
                       </SelectInput>
                     ) : null}
@@ -188,7 +218,7 @@ export function TeamPage() {
         )}
       </Panel>
 
-      <Panel title="Invitations en attente" description="Revoque les invitations qui ne doivent plus donner acces a l'entreprise.">
+      <Panel title="Invitations" description="Expiration visible, renvoi possible, revocation si l'acces ne doit plus etre donne.">
         {!team ? (
           <div className="empty-state"><strong>Chargement...</strong></div>
         ) : (
@@ -208,52 +238,124 @@ export function TeamPage() {
                 key: "role",
                 header: "Role",
                 sortValue: (invitation) => roleOrder(invitation.role),
-                render: (invitation) => <Badge tone={invitation.role === "admin" ? "indigo" : "slate"}>{roleLabel(invitation.role)}</Badge>,
+                render: (invitation) => <Badge tone={roleTone(invitation.role)}>{roleLabel(invitation.role)}</Badge>,
               },
               {
                 key: "status",
                 header: "Statut",
-                sortValue: (invitation) => invitationStatusOrder(invitation.status),
-                render: (invitation) => <Badge tone={invitation.status === "pending" ? "amber" : "slate"}>{invitationStatusLabel(invitation.status)}</Badge>,
+                sortValue: (invitation) => invitationStatusOrder(displayInvitationStatus(invitation)),
+                render: (invitation) => <Badge tone={displayInvitationStatus(invitation) === "pending" ? "amber" : "slate"}>{invitationStatusLabel(displayInvitationStatus(invitation))}</Badge>,
               },
               {
                 key: "expiresAt",
                 header: "Expiration",
                 sortValue: (invitation) => invitation.expiresAt,
-                render: (invitation) => new Intl.DateTimeFormat("fr-FR").format(new Date(invitation.expiresAt)),
+                render: (invitation) => <ExpirationCell expiresAt={invitation.expiresAt} />,
               },
               {
                 key: "actions",
                 header: "Actions",
                 sortable: false,
-                render: (invitation) =>
-                  canManageTeam && invitation.status === "pending" ? (
-                    <Button disabled={pending === invitation._id} size="sm" type="button" variant="outline" onClick={() => void cancelInvitation(invitation._id)}>
-                      <X className="h-4 w-4" />
-                      Revoquer
+                render: (invitation) => canManageTeam && invitation.status !== "accepted" ? (
+                  <div className="table-actions">
+                    <Button disabled={pending === `resend-${invitation._id}`} size="sm" type="button" variant="outline" onClick={() => void resend(invitation._id)}>
+                      <RefreshCw className="h-4 w-4" />
+                      Renvoyer
                     </Button>
-                  ) : null,
+                    {displayInvitationStatus(invitation) === "pending" ? (
+                      <Button disabled={pending === invitation._id} size="sm" type="button" variant="danger" onClick={() => void cancelInvitation(invitation._id)}>
+                        <X className="h-4 w-4" />
+                        Revoquer
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null,
               },
             ]}
           />
         )}
       </Panel>
+
+      <Panel title="Journal d'activite" description="Dernieres modifications effectuees dans l'entreprise.">
+        <DataTable
+          rows={activity ?? []}
+          rowKey={(entry) => entry._id}
+          density="compact"
+          loading={activity === undefined}
+          empty={<div className="empty-state"><strong>Aucune activite pour le moment</strong></div>}
+          columns={[
+            {
+              key: "date",
+              header: "Date",
+              sortValue: (entry) => entry.createdAt,
+              render: (entry) => formatDateTime(entry.createdAt),
+            },
+            {
+              key: "actor",
+              header: "Qui",
+              sortValue: (entry) => entry.actorEmail ?? entry.actorName ?? "",
+              render: (entry) => (
+                <div className="min-w-0">
+                  <strong className="block truncate text-[#491474]">{entry.actorName ?? entry.actorEmail ?? "Systeme"}</strong>
+                  {entry.actorEmail ? <span className="block truncate text-xs text-[#7a5f6c]">{entry.actorEmail}</span> : null}
+                </div>
+              ),
+            },
+            {
+              key: "summary",
+              header: "Action",
+              sortValue: (entry) => entry.summary,
+              render: (entry) => <span>{entry.summary}</span>,
+            },
+            {
+              key: "resource",
+              header: "Module",
+              sortValue: (entry) => entry.resourceType,
+              render: (entry) => <Badge tone="slate">{resourceLabel(entry.resourceType)}</Badge>,
+            },
+          ]}
+        />
+      </Panel>
     </div>
   );
 }
 
+function RoleCard({ role, detail }: { role: string; detail: string }) {
+  return (
+    <section className="role-card">
+      <ShieldCheck className="h-4 w-4" />
+      <strong>{role}</strong>
+      <span>{detail}</span>
+    </section>
+  );
+}
+
 function roleLabel(role: TeamRole) {
-  if (role === "owner") {
+  const normalized = normalizeRole(role);
+  if (normalized === "owner") {
     return "Proprietaire";
   }
-  if (role === "admin") {
+  if (normalized === "admin") {
     return "Administrateur";
   }
-  return "Membre";
+  if (normalized === "readonly") {
+    return "Lecture seule";
+  }
+  return "Commercial";
 }
 
 function roleOrder(role: TeamRole) {
-  return role === "owner" ? 0 : role === "admin" ? 1 : 2;
+  const normalized = normalizeRole(role);
+  return normalized === "owner" ? 0 : normalized === "admin" ? 1 : normalized === "sales" ? 2 : 3;
+}
+
+function roleTone(role: TeamRole) {
+  const normalized = normalizeRole(role);
+  return normalized === "owner" ? "rose" : normalized === "admin" ? "indigo" : normalized === "sales" ? "cyan" : "slate";
+}
+
+function normalizeRole(role: TeamRole | undefined): Exclude<TeamRole, "member"> | undefined {
+  return role === "member" ? "sales" : role;
 }
 
 function invitationStatusLabel(status: InvitationStatus) {
@@ -271,4 +373,56 @@ function invitationStatusLabel(status: InvitationStatus) {
 
 function invitationStatusOrder(status: InvitationStatus) {
   return status === "pending" ? 0 : status === "accepted" ? 1 : status === "expired" ? 2 : 3;
+}
+
+function displayInvitationStatus(invitation: { status: InvitationStatus; expiresAt: number }) {
+  if (invitation.status === "pending" && invitation.expiresAt < Date.now()) {
+    return "expired";
+  }
+  return invitation.status;
+}
+
+function ExpirationCell({ expiresAt }: { expiresAt: number }) {
+  const days = daysUntil(expiresAt);
+  const late = days < 0;
+  return (
+    <span className={late ? "due-date due-date-late" : days <= 2 ? "due-date due-date-soon" : "due-date"}>
+      <Clock3 className="h-3.5 w-3.5" />
+      {formatDate(expiresAt)} · {late ? `expiree depuis ${Math.abs(days)} j` : `J-${days}`}
+    </span>
+  );
+}
+
+function daysUntil(timestamp: number) {
+  const day = 24 * 60 * 60 * 1000;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(timestamp);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / day);
+}
+
+function formatDateTime(timestamp: number) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function resourceLabel(resourceType: string) {
+  const labels: Record<string, string> = {
+    organization: "Entreprise",
+    member: "Equipe",
+    invitation: "Invitation",
+    client: "Client",
+    material: "Materiau",
+    service: "Prestation",
+    quote: "Devis",
+    invoice: "Facture",
+    quoteTemplate: "Modele",
+  };
+  return labels[resourceType] ?? resourceType;
 }

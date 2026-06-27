@@ -42,6 +42,11 @@ export default defineSchema({
     professionalInsurance: v.optional(v.string()),
     mediatorInfo: v.optional(v.string()),
     acceptanceText: v.optional(v.string()),
+    accountingClientAccount: v.optional(v.string()),
+    accountingBankAccount: v.optional(v.string()),
+    accountingVatCollectedAccount: v.optional(v.string()),
+    accountingSalesGoodsAccount: v.optional(v.string()),
+    accountingSalesServicesAccount: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   }).index("by_name", ["name"]),
@@ -49,7 +54,7 @@ export default defineSchema({
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
     userId: v.id("users"),
-    role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
+    role: v.union(v.literal("owner"), v.literal("admin"), v.literal("sales"), v.literal("readonly"), v.literal("member")),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
@@ -60,7 +65,7 @@ export default defineSchema({
   organizationInvitations: defineTable({
     organizationId: v.id("organizations"),
     email: v.string(),
-    role: v.union(v.literal("admin"), v.literal("member")),
+    role: v.union(v.literal("admin"), v.literal("sales"), v.literal("readonly"), v.literal("member")),
     tokenHash: v.string(),
     status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("revoked"), v.literal("expired")),
     invitedByUserId: v.id("users"),
@@ -73,6 +78,37 @@ export default defineSchema({
     .index("by_tokenHash", ["tokenHash"])
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_email", ["organizationId", "email"]),
+
+  activityLogs: defineTable({
+    organizationId: v.id("organizations"),
+    actorUserId: v.optional(v.id("users")),
+    actorName: v.optional(v.string()),
+    actorEmail: v.optional(v.string()),
+    action: v.string(),
+    resourceType: v.string(),
+    resourceId: v.optional(v.string()),
+    summary: v.string(),
+    metadata: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_createdAt", ["organizationId", "createdAt"]),
+
+  documentEmailEvents: defineTable({
+    organizationId: v.id("organizations"),
+    documentKind: v.union(v.literal("quote"), v.literal("invoice")),
+    eventKind: v.optional(v.union(v.literal("send"), v.literal("reminder"))),
+    quoteId: v.optional(v.id("quotes")),
+    invoiceId: v.optional(v.id("invoices")),
+    recipient: v.string(),
+    senderUserId: v.optional(v.id("users")),
+    senderName: v.optional(v.string()),
+    senderEmail: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_quoteId_and_createdAt", ["quoteId", "createdAt"])
+    .index("by_invoiceId_and_createdAt", ["invoiceId", "createdAt"])
+    .index("by_organizationId_and_createdAt", ["organizationId", "createdAt"]),
 
   documentSequences: defineTable({
     organizationId: v.id("organizations"),
@@ -128,6 +164,7 @@ export default defineSchema({
     height: v.optional(v.number()),
     defaultWasteRate: v.number(),
     supplier: v.optional(v.string()),
+    favorite: v.optional(v.boolean()),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -139,10 +176,42 @@ export default defineSchema({
     description: v.optional(v.string()),
     unit: v.union(v.literal("heure"), v.literal("forfait"), v.literal("jour"), v.literal("m2"), v.literal("metre")),
     unitPriceHt: v.number(),
+    favorite: v.optional(v.boolean()),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  quoteTemplates: defineTable({
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    category: v.optional(v.string()),
+    description: v.optional(v.string()),
+    favorite: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"]),
+
+  quoteTemplateLines: defineTable({
+    organizationId: v.id("organizations"),
+    templateId: v.id("quoteTemplates"),
+    kind: v.union(v.literal("material"), v.literal("service"), v.literal("custom")),
+    materialId: v.optional(v.id("materials")),
+    serviceId: v.optional(v.id("services")),
+    section: v.optional(v.string()),
+    description: v.string(),
+    unit: v.string(),
+    quantity: v.number(),
+    unitPriceHt: v.number(),
+    wasteRate: v.number(),
+    marginRate: v.number(),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_templateId_and_sortOrder", ["templateId", "sortOrder"]),
 
   quotes: defineTable({
     organizationId: v.id("organizations"),
@@ -159,6 +228,7 @@ export default defineSchema({
       v.literal("accepted"),
       v.literal("refused"),
       v.literal("invoiced"),
+      v.literal("void"),
     ),
     totalHt: v.number(),
     totalTtc: v.number(),
@@ -170,12 +240,30 @@ export default defineSchema({
     legalNotice: v.optional(v.string()),
     notes: v.optional(v.string()),
     convertedInvoiceId: v.optional(v.id("invoices")),
+    revisionOfQuoteId: v.optional(v.id("quotes")),
+    revisionNumber: v.optional(v.number()),
+    supersededByQuoteId: v.optional(v.id("quotes")),
+    finalizedAt: v.optional(v.number()),
+    publicTokenHash: v.optional(v.string()),
+    publicTokenCreatedAt: v.optional(v.number()),
+    publicTokenRevokedAt: v.optional(v.number()),
+    clientDecision: v.optional(v.union(v.literal("accepted"), v.literal("refused"))),
+    clientDecisionAt: v.optional(v.number()),
+    clientSignature: v.optional(v.string()),
+    clientDecisionIp: v.optional(v.string()),
+    clientDecisionUserAgent: v.optional(v.string()),
+    sentAt: v.optional(v.number()),
+    acceptedAt: v.optional(v.number()),
+    refusedAt: v.optional(v.number()),
+    invoicedAt: v.optional(v.number()),
+    voidedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_clientId", ["organizationId", "clientId"])
-    .index("by_organizationId_and_number", ["organizationId", "number"]),
+    .index("by_organizationId_and_number", ["organizationId", "number"])
+    .index("by_publicTokenHash", ["publicTokenHash"]),
 
   quoteItems: defineTable({
     organizationId: v.id("organizations"),
@@ -209,17 +297,28 @@ export default defineSchema({
     quoteId: v.optional(v.id("quotes")),
     clientId: v.optional(v.id("clients")),
     number: v.string(),
+    invoiceKind: v.optional(v.union(v.literal("standard"), v.literal("deposit"), v.literal("balance"), v.literal("credit"))),
+    creditedInvoiceId: v.optional(v.id("invoices")),
+    creditInvoiceId: v.optional(v.id("invoices")),
+    depositRate: v.optional(v.number()),
+    sourceQuoteTotalHt: v.optional(v.number()),
+    sourceQuoteTotalTtc: v.optional(v.number()),
+    deductedDepositHt: v.optional(v.number()),
+    deductedDepositTtc: v.optional(v.number()),
     deliveryAddress: v.optional(v.string()),
     operationType: v.optional(v.union(v.literal("goods"), v.literal("services"), v.literal("mixed"))),
     taxDebitOption: v.optional(v.boolean()),
-    status: v.union(v.literal("draft"), v.literal("sent"), v.literal("paid"), v.literal("overdue"), v.literal("void")),
+    status: v.union(v.literal("draft"), v.literal("sent"), v.literal("partially_paid"), v.literal("paid"), v.literal("overdue"), v.literal("void")),
     totalHt: v.number(),
     totalTtc: v.number(),
     vatRate: v.number(),
     issueDate: v.number(),
     serviceDate: v.optional(v.number()),
     dueDate: v.number(),
+    finalizedAt: v.optional(v.number()),
+    sentAt: v.optional(v.number()),
     paidAt: v.optional(v.number()),
+    voidedAt: v.optional(v.number()),
     paymentMethod: v.optional(v.string()),
     paymentReference: v.optional(v.string()),
     paymentTermsText: v.optional(v.string()),
@@ -231,5 +330,21 @@ export default defineSchema({
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_clientId", ["organizationId", "clientId"])
+    .index("by_organizationId_and_quoteId", ["organizationId", "quoteId"])
+    .index("by_organizationId_and_creditedInvoiceId", ["organizationId", "creditedInvoiceId"])
     .index("by_organizationId_and_number", ["organizationId", "number"]),
+
+  invoicePayments: defineTable({
+    organizationId: v.id("organizations"),
+    invoiceId: v.id("invoices"),
+    amountTtc: v.number(),
+    paidAt: v.number(),
+    paymentMethod: v.optional(v.string()),
+    paymentReference: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_invoiceId_and_paidAt", ["invoiceId", "paidAt"]),
 });

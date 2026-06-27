@@ -63,12 +63,10 @@ export function IconButton({
 }
 
 export function PageHeader({
-  eyebrow,
   title,
   description,
   actions,
 }: {
-  eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
@@ -76,7 +74,6 @@ export function PageHeader({
   return (
     <div className="page-header">
       <div>
-        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
         <h1>{title}</h1>
         {description ? <p>{description}</p> : null}
       </div>
@@ -377,6 +374,86 @@ export function Modal({
         <div className="modal-body">{children}</div>
         {footer ? <div className="modal-footer">{footer}</div> : null}
       </div>
+    </div>
+  );
+}
+
+export function ConfirmModal({
+  open,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel = "Annuler",
+  tone = "primary",
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: "primary" | "danger" | "success";
+  pending?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      title={title}
+      onClose={pending ? () => undefined : onCancel}
+      size="sm"
+      footer={
+        <>
+          <Button variant="outline" disabled={pending} onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button variant={tone === "danger" ? "danger" : tone === "success" ? "success" : "primary"} disabled={pending} onClick={onConfirm}>
+            {pending ? "Traitement..." : confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <Notice kind={tone === "danger" ? "warning" : "info"}>{description}</Notice>
+    </Modal>
+  );
+}
+
+export function DocumentTimeline({
+  events,
+}: {
+  events: Array<{
+    label: string;
+    date?: string;
+    detail?: string;
+    done?: boolean;
+    current?: boolean;
+    tone?: "default" | "danger" | "success";
+  }>;
+}) {
+  return (
+    <div className="document-timeline" aria-label="Timeline du document">
+      {events.map((event) => (
+        <div
+          key={event.label}
+          className={cn(
+            "timeline-step",
+            event.done && "timeline-step-done",
+            event.current && "timeline-step-current",
+            event.tone === "danger" && "timeline-step-danger",
+            event.tone === "success" && "timeline-step-success",
+          )}
+        >
+          <span />
+          <div>
+            <strong>{event.label}</strong>
+            <small>{event.date ?? "En attente"}</small>
+            {event.detail ? <em>{event.detail}</em> : null}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

@@ -11,10 +11,12 @@ import { BooriseMark } from "@/components/brand/BooriseLogo";
 import { OnboardingPage } from "@/components/auth/OnboardingPage";
 import { LandingPage } from "@/components/marketing/LandingPage";
 import { Button, Notice } from "@/components/ui/app";
+import { PublicQuotePage } from "@/routes/PublicQuotePage";
 import { useToast } from "@/components/ui/toast-context";
 import { ToastProvider } from "@/components/ui/toast";
 import { friendlyError } from "@/lib/errors";
 import { isOrganizationOnboarded } from "@/lib/onboarding";
+import { useSeo } from "@/lib/seo";
 import { routeTree } from "@/routeTree";
 
 const router = createRouter({ routeTree });
@@ -52,7 +54,12 @@ function shouldHandleAuthCode() {
 }
 
 function AuthGate({ children }: { children: ReactNode }) {
+  const publicQuoteToken = getPublicQuoteToken();
   const { isAuthenticated, isLoading } = useConvexAuth();
+
+  if (publicQuoteToken) {
+    return <PublicQuotePage token={publicQuoteToken} />;
+  }
 
   if (isLoading) {
     return <LoadingScreen label="Chargement..." />;
@@ -70,13 +77,16 @@ function PublicAccess() {
 
   if (authMode) {
     return (
-      <AuthPage
-        initialMode={authMode}
-        onBack={canReturnToLanding() ? () => {
-          setAuthMode(null);
-          window.history.replaceState({}, "", "/");
-        } : undefined}
-      />
+      <>
+        <AuthSeo mode={authMode} />
+        <AuthPage
+          initialMode={authMode}
+          onBack={canReturnToLanding() ? () => {
+            setAuthMode(null);
+            window.history.replaceState({}, "", "/");
+          } : undefined}
+        />
+      </>
     );
   }
 
@@ -97,6 +107,12 @@ function PublicAccess() {
 function WorkspaceGate({ children }: { children: ReactNode }) {
   const current = useQuery(api.app.current);
   const invitationToken = getInvitationToken();
+  useSeo({
+    title: "Espace entreprise - Boorise",
+    description: "Espace prive Boorise pour gerer clients, devis, factures, materiaux et equipe.",
+    canonicalPath: "/",
+    noIndex: true,
+  });
 
   if (current === undefined) {
     return <LoadingScreen label="Chargement de l'espace..." />;
@@ -115,6 +131,30 @@ function WorkspaceGate({ children }: { children: ReactNode }) {
   }
 
   return children;
+}
+
+function AuthSeo({ mode }: { mode: AuthMode }) {
+  const labels: Record<AuthMode, string> = {
+    reset: "Reinitialisation du mot de passe",
+    resetVerify: "Nouveau mot de passe",
+    signIn: "Connexion",
+    signUp: "Inscription",
+  };
+  useSeo({
+    title: `${labels[mode]} - Boorise`,
+    description: "Accede a ton espace Boorise pour gerer clients, devis, factures et catalogue.",
+    canonicalPath: "/",
+    noIndex: true,
+  });
+  return null;
+}
+
+function getPublicQuoteToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const match = window.location.pathname.match(/^\/public\/quote\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function InvitationAcceptPage({ token }: { token: string }) {
@@ -149,7 +189,6 @@ function InvitationAcceptPage({ token }: { token: string }) {
               <div className="text-xs text-slate-500">Invitation equipe</div>
             </div>
           </div>
-          <div className="eyebrow">Invitation equipe</div>
           <h2>Rejoindre l'entreprise</h2>
           <p>Cette invitation rattache ton compte a l'equipe de l'entreprise dans Boorise. Un compte ne peut appartenir qu'a une seule equipe.</p>
           {error ? <Notice kind="error">{error}</Notice> : null}

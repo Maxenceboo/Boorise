@@ -1,20 +1,30 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   cleanOptionalString,
   cleanRequiredString,
-  requireCurrentMembership,
+  logActivity,
+  requireBusinessWrite,
   requireCurrentOrganizationId,
 } from "./app";
 import { calculateMaterial } from "./materialCalculation";
+import {
+  assertCanCreateQuoteRevision,
+  assertCanEditQuote,
+  assertCanChangeQuoteStatus,
+  assertCanConvertQuoteToInvoice,
+  assertCanDeleteQuote,
+  type MutableQuoteStatus,
+} from "./documentLifecycle";
+import { groupQuoteItemsByQuoteId, summarizeQuoteItems } from "./businessMetrics";
 
 const quoteStatusValidator = v.union(
   v.literal("draft"),
   v.literal("sent"),
   v.literal("accepted"),
   v.literal("refused"),
-  v.literal("invoiced"),
+  v.literal("void"),
 );
 
 const itemKindValidator = v.union(v.literal("material"), v.literal("service"), v.literal("custom"));
@@ -28,11 +38,18 @@ export const list = query({
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
       .order("desc")
       .take(100);
+    const items = await ctx.db
+      .query("quoteItems")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+      .order("desc")
+      .take(1000);
+    const itemsByQuoteId = groupQuoteItemsByQuoteId(items);
 
     return await Promise.all(
       quotes.map(async (quote) => ({
         ...quote,
         client: quote.clientId ? await ctx.db.get(quote.clientId) : null,
+        business: summarizeQuoteItems(itemsByQuoteId.get(quote._id) ?? []),
       })),
     );
   },
@@ -51,11 +68,20 @@ export const get = query({
       .query("quoteItems")
       .withIndex("by_quoteId_and_sortOrder", (q) => q.eq("quoteId", args.quoteId))
       .take(300);
+    const emailEvents = await ctx.db
+      .query("documentEmailEvents")
+      .withIndex("by_quoteId_and_createdAt", (q) => q.eq("quoteId", args.quoteId))
+      .order("desc")
+      .take(20);
+    const billing = await getQuoteBilling(ctx, quote);
 
     return {
       quote,
       client: quote.clientId ? await ctx.db.get(quote.clientId) : null,
       items,
+      emailEvents,
+      billing,
+      business: summarizeQuoteItems(items),
     };
   },
 });
@@ -77,7 +103,7 @@ export const createDraft = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { organization } = await requireCurrentMembership(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
     if (args.clientId) {
       await requireClient(ctx, organization._id, args.clientId);
     }
@@ -107,6 +133,7 @@ export const createDraft = mutation({
       updatedAt: now,
     });
 
+    await logActivity(ctx, "quote.created", "quote", quoteId, `Devis cree: ${cleanRequiredString(args.title, "Le titre du devis")}`);
     return quoteId;
   },
 });
@@ -129,11 +156,10 @@ export const updateDetails = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
     const quote = await requireQuote(ctx, organizationId, args.quoteId);
-    if (quote.status === "invoiced") {
-      throw new Error("Un devis facturé ne peut plus être modifié");
-    }
+    assertCanEditQuote(quote.status);
     if (args.clientId) {
       await requireClient(ctx, organizationId, args.clientId);
     }
@@ -155,23 +181,187 @@ export const updateDetails = mutation({
       updatedAt: Date.now(),
     });
     await recalculateQuoteTotals(ctx, args.quoteId);
+    await logActivity(ctx, "quote.updated", "quote", args.quoteId, `Devis modifie: ${args.title}`);
 
     return args.quoteId;
   },
 });
 
-export const duplicate = mutation({
+export const addItem = mutation({
+  args: {
+    quoteId: v.id("quotes"),
+    kind: itemKindValidator,
+    materialId: v.optional(v.id("materials")),
+    serviceId: v.optional(v.id("services")),
+    section: v.optional(v.string()),
+    description: v.optional(v.string()),
+    unit: v.optional(v.string()),
+    quantity: v.number(),
+    unitPriceHt: v.optional(v.number()),
+    wasteRate: v.optional(v.number()),
+    marginRate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
+    await requireEditableQuote(ctx, organizationId, args.quoteId);
+    const now = Date.now();
+    const item = await normalizeQuoteItem(ctx, organizationId, args);
+    const lastItem = await ctx.db
+      .query("quoteItems")
+      .withIndex("by_quoteId_and_sortOrder", (q) => q.eq("quoteId", args.quoteId))
+      .order("desc")
+      .take(1);
+
+    const itemId = await ctx.db.insert("quoteItems", {
+      organizationId,
+      quoteId: args.quoteId,
+      ...item,
+      sortOrder: (lastItem[0]?.sortOrder ?? 0) + 10,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await recalculateQuoteTotals(ctx, args.quoteId);
+    await logActivity(ctx, "quote.item_added", "quote", args.quoteId, `Ligne ajoutee au devis: ${item.description}`);
+    return itemId;
+  },
+});
+
+export const updateItem = mutation({
+  args: {
+    itemId: v.id("quoteItems"),
+    kind: itemKindValidator,
+    materialId: v.optional(v.id("materials")),
+    serviceId: v.optional(v.id("services")),
+    section: v.optional(v.string()),
+    description: v.optional(v.string()),
+    unit: v.optional(v.string()),
+    quantity: v.number(),
+    unitPriceHt: v.optional(v.number()),
+    wasteRate: v.optional(v.number()),
+    marginRate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
+    const existing = await ctx.db.get(args.itemId);
+    if (!existing || existing.organizationId !== organizationId) {
+      throw new Error("Ligne introuvable");
+    }
+    await requireEditableQuote(ctx, organizationId, existing.quoteId);
+
+    const item = await normalizeQuoteItem(ctx, organizationId, { ...args, quoteId: existing.quoteId });
+    await ctx.db.patch(args.itemId, {
+      ...item,
+      updatedAt: Date.now(),
+    });
+    await recalculateQuoteTotals(ctx, existing.quoteId);
+    await logActivity(ctx, "quote.item_updated", "quote", existing.quoteId, `Ligne modifiee: ${item.description}`);
+    return args.itemId;
+  },
+});
+
+export const removeItem = mutation({
+  args: { itemId: v.id("quoteItems") },
+  handler: async (ctx, args) => {
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
+    const existing = await ctx.db.get(args.itemId);
+    if (!existing || existing.organizationId !== organizationId) {
+      throw new Error("Ligne introuvable");
+    }
+    await requireEditableQuote(ctx, organizationId, existing.quoteId);
+    await ctx.db.delete(args.itemId);
+    await recalculateQuoteTotals(ctx, existing.quoteId);
+    await logActivity(ctx, "quote.item_removed", "quote", existing.quoteId, `Ligne supprimee: ${existing.description}`);
+    return existing.quoteId;
+  },
+});
+
+export const changeStatus = mutation({
+  args: {
+    quoteId: v.id("quotes"),
+    status: quoteStatusValidator,
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
+    const quote = await requireQuote(ctx, organizationId, args.quoteId);
+    assertCanChangeQuoteStatus(quote.status, args.status as MutableQuoteStatus);
+
+    const now = Date.now();
+    const updates: Partial<Doc<"quotes">> = {
+      status: args.status,
+      updatedAt: now,
+    };
+    if (args.status === "sent" && !quote.sentAt) {
+      updates.sentAt = now;
+    }
+    if (args.status === "sent" && !quote.finalizedAt) {
+      updates.finalizedAt = now;
+    }
+    if (args.status === "accepted" && !quote.acceptedAt) {
+      updates.acceptedAt = now;
+    }
+    if (args.status === "accepted" && !quote.finalizedAt) {
+      updates.finalizedAt = now;
+    }
+    if (args.status === "refused" && !quote.refusedAt) {
+      updates.refusedAt = now;
+    }
+    if (args.status === "refused" && !quote.finalizedAt) {
+      updates.finalizedAt = now;
+    }
+    if (args.status === "void" && !quote.voidedAt) {
+      updates.voidedAt = now;
+    }
+    if (args.status === "void" && !quote.finalizedAt) {
+      updates.finalizedAt = now;
+    }
+
+    await ctx.db.patch(args.quoteId, updates);
+    await logActivity(ctx, "quote.status_changed", "quote", args.quoteId, `Statut devis: ${args.status}`);
+
+    return args.quoteId;
+  },
+});
+
+export const deleteDraft = mutation({
   args: { quoteId: v.id("quotes") },
   handler: async (ctx, args) => {
-    const { organization } = await requireCurrentMembership(ctx);
-    const sourceQuote = await requireQuote(ctx, organization._id, args.quoteId);
-    const now = Date.now();
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
+    const quote = await requireQuote(ctx, organizationId, args.quoteId);
+    assertCanDeleteQuote(quote.status);
 
+    const items = await ctx.db
+      .query("quoteItems")
+      .withIndex("by_quoteId_and_sortOrder", (q) => q.eq("quoteId", args.quoteId))
+      .take(300);
+
+    for (const item of items) {
+      await ctx.db.delete(item._id);
+    }
+    await ctx.db.delete(args.quoteId);
+    await logActivity(ctx, "quote.deleted", "quote", args.quoteId, `Brouillon supprime: ${quote.number}`);
+    return args.quoteId;
+  },
+});
+
+export const createRevision = mutation({
+  args: { quoteId: v.id("quotes") },
+  handler: async (ctx, args) => {
+    const { organization } = await requireBusinessWrite(ctx);
+    const sourceQuote = await requireQuote(ctx, organization._id, args.quoteId);
+    assertCanCreateQuoteRevision(sourceQuote.status);
+
+    const now = Date.now();
+    const revisionNumber = (sourceQuote.revisionNumber ?? 0) + 1;
     const newQuoteId = await ctx.db.insert("quotes", {
       organizationId: organization._id,
       clientId: sourceQuote.clientId,
       number: await nextDocumentNumber(ctx, organization._id, organization.quotePrefix ?? "D", "quotes"),
-      title: `Copie - ${sourceQuote.title}`,
+      title: `${sourceQuote.title} - revision ${revisionNumber}`,
       siteDescription: sourceQuote.siteDescription,
       deliveryAddress: sourceQuote.deliveryAddress,
       operationType: sourceQuote.operationType,
@@ -186,6 +376,8 @@ export const duplicate = mutation({
       latePenaltyText: sourceQuote.latePenaltyText,
       legalNotice: sourceQuote.legalNotice,
       notes: sourceQuote.notes,
+      revisionOfQuoteId: sourceQuote.revisionOfQuoteId ?? sourceQuote._id,
+      revisionNumber,
       createdAt: now,
       updatedAt: now,
     });
@@ -221,128 +413,53 @@ export const duplicate = mutation({
       });
     }
 
+    await ctx.db.patch(sourceQuote._id, {
+      supersededByQuoteId: newQuoteId,
+      updatedAt: now,
+    });
     await recalculateQuoteTotals(ctx, newQuoteId);
+    await logActivity(ctx, "quote.revision_created", "quote", newQuoteId, `Revision creee depuis ${sourceQuote.number}`);
     return newQuoteId;
   },
 });
 
-export const addItem = mutation({
-  args: {
-    quoteId: v.id("quotes"),
-    kind: itemKindValidator,
-    materialId: v.optional(v.id("materials")),
-    serviceId: v.optional(v.id("services")),
-    section: v.optional(v.string()),
-    description: v.optional(v.string()),
-    unit: v.optional(v.string()),
-    quantity: v.number(),
-    unitPriceHt: v.optional(v.number()),
-    wasteRate: v.optional(v.number()),
-    marginRate: v.optional(v.number()),
-  },
+export const createPublicLink = mutation({
+  args: { quoteId: v.id("quotes") },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
-    await requireEditableQuote(ctx, organizationId, args.quoteId);
-    const now = Date.now();
-    const item = await normalizeQuoteItem(ctx, organizationId, args);
-    const lastItem = await ctx.db
-      .query("quoteItems")
-      .withIndex("by_quoteId_and_sortOrder", (q) => q.eq("quoteId", args.quoteId))
-      .order("desc")
-      .take(1);
-
-    const itemId = await ctx.db.insert("quoteItems", {
-      organizationId,
-      quoteId: args.quoteId,
-      ...item,
-      sortOrder: (lastItem[0]?.sortOrder ?? 0) + 10,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await recalculateQuoteTotals(ctx, args.quoteId);
-    return itemId;
-  },
-});
-
-export const updateItem = mutation({
-  args: {
-    itemId: v.id("quoteItems"),
-    kind: itemKindValidator,
-    materialId: v.optional(v.id("materials")),
-    serviceId: v.optional(v.id("services")),
-    section: v.optional(v.string()),
-    description: v.optional(v.string()),
-    unit: v.optional(v.string()),
-    quantity: v.number(),
-    unitPriceHt: v.optional(v.number()),
-    wasteRate: v.optional(v.number()),
-    marginRate: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
-    const existing = await ctx.db.get(args.itemId);
-    if (!existing || existing.organizationId !== organizationId) {
-      throw new Error("Ligne introuvable");
-    }
-    await requireEditableQuote(ctx, organizationId, existing.quoteId);
-
-    const item = await normalizeQuoteItem(ctx, organizationId, { ...args, quoteId: existing.quoteId });
-    await ctx.db.patch(args.itemId, {
-      ...item,
-      updatedAt: Date.now(),
-    });
-    await recalculateQuoteTotals(ctx, existing.quoteId);
-    return args.itemId;
-  },
-});
-
-export const removeItem = mutation({
-  args: { itemId: v.id("quoteItems") },
-  handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
-    const existing = await ctx.db.get(args.itemId);
-    if (!existing || existing.organizationId !== organizationId) {
-      throw new Error("Ligne introuvable");
-    }
-    await requireEditableQuote(ctx, organizationId, existing.quoteId);
-    await ctx.db.delete(args.itemId);
-    await recalculateQuoteTotals(ctx, existing.quoteId);
-    return existing.quoteId;
-  },
-});
-
-export const changeStatus = mutation({
-  args: {
-    quoteId: v.id("quotes"),
-    status: quoteStatusValidator,
-  },
-  handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
     const quote = await requireQuote(ctx, organizationId, args.quoteId);
-    if (quote.status === "invoiced" && args.status !== "invoiced") {
-      throw new Error("Un devis facturé ne peut pas revenir en arrière");
+    if (quote.status === "draft") {
+      throw new Error("Envoie le devis avant de creer un lien client.");
+    }
+    if (quote.status === "void") {
+      throw new Error("Un devis annule ne peut pas etre partage.");
+    }
+    if (quote.status !== "sent" && !quote.clientDecision) {
+      throw new Error("Le lien client se cree sur un devis envoye.");
     }
 
+    const token = generatePublicToken();
     await ctx.db.patch(args.quoteId, {
-      status: args.status,
+      publicTokenHash: await sha256Hex(token),
+      publicTokenCreatedAt: Date.now(),
+      publicTokenRevokedAt: undefined,
       updatedAt: Date.now(),
     });
-
-    return args.quoteId;
+    await logActivity(ctx, "quote.public_link_created", "quote", args.quoteId, `Lien client cree pour ${quote.number}`);
+    return { token };
   },
 });
 
 export const convertToInvoice = mutation({
   args: { quoteId: v.id("quotes") },
   handler: async (ctx, args) => {
-    const { organization } = await requireCurrentMembership(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
     const quote = await requireQuote(ctx, organization._id, args.quoteId);
     if (quote.convertedInvoiceId) {
       return quote.convertedInvoiceId;
     }
-    if (quote.totalHt <= 0) {
-      throw new Error("Impossible de facturer un devis vide");
-    }
+    assertCanConvertQuoteToInvoice(quote.status, quote.totalHt);
 
     const now = Date.now();
     const dueDate = now + Math.max(0, organization.paymentTermsDays ?? 30) * 24 * 60 * 60 * 1000;
@@ -351,6 +468,7 @@ export const convertToInvoice = mutation({
       quoteId: quote._id,
       clientId: quote.clientId,
       number: await nextDocumentNumber(ctx, organization._id, organization.invoicePrefix ?? "F", "invoices"),
+      invoiceKind: "standard",
       deliveryAddress: quote.deliveryAddress,
       operationType: quote.operationType ?? organization.defaultOperationType ?? "mixed",
       taxDebitOption: quote.taxDebitOption ?? organization.taxDebitOption ?? false,
@@ -372,8 +490,11 @@ export const convertToInvoice = mutation({
     await ctx.db.patch(quote._id, {
       status: "invoiced",
       convertedInvoiceId: invoiceId,
+      invoicedAt: now,
+      finalizedAt: quote.finalizedAt ?? now,
       updatedAt: now,
     });
+    await logActivity(ctx, "quote.invoiced", "quote", quote._id, `Facture creee depuis ${quote.number}`);
 
     return invoiceId;
   },
@@ -514,11 +635,32 @@ async function recalculateQuoteTotals(ctx: MutationCtx, quoteId: Id<"quotes">) {
   });
 }
 
+async function getQuoteBilling(ctx: QueryCtx, quote: Doc<"quotes">) {
+  const invoices = await ctx.db
+    .query("invoices")
+    .withIndex("by_organizationId_and_quoteId", (q) =>
+      q.eq("organizationId", quote.organizationId).eq("quoteId", quote._id),
+    )
+    .take(100);
+  const activeInvoices = invoices.filter((invoice) => invoice.status !== "void");
+  const issuedDeposits = activeInvoices.filter((invoice) => invoice.invoiceKind === "deposit" && invoice.status !== "draft");
+  const depositIssuedHt = roundMoney(issuedDeposits.reduce((sum, invoice) => sum + invoice.totalHt, 0));
+  const depositIssuedTtc = roundMoney(issuedDeposits.reduce((sum, invoice) => sum + invoice.totalTtc, 0));
+  const finalInvoice = activeInvoices.find((invoice) => invoice.invoiceKind === "standard" || invoice.invoiceKind === "balance") ?? null;
+  return {
+    depositIssuedHt,
+    depositIssuedTtc,
+    remainingToInvoiceHt: roundMoney(Math.max(0, quote.totalHt - depositIssuedHt)),
+    remainingToInvoiceTtc: roundMoney(Math.max(0, quote.totalTtc - depositIssuedTtc)),
+    hasIssuedDeposits: depositIssuedTtc > 0,
+    canCreateBalance: quote.status === "accepted" && depositIssuedTtc > 0 && depositIssuedTtc < quote.totalTtc - 0.01 && !finalInvoice,
+    finalInvoiceId: finalInvoice?._id,
+  };
+}
+
 async function requireEditableQuote(ctx: QueryCtx | MutationCtx, organizationId: Id<"organizations">, quoteId: Id<"quotes">) {
   const quote = await requireQuote(ctx, organizationId, quoteId);
-  if (quote.status === "invoiced") {
-    throw new Error("Un devis facturé ne peut plus être modifié");
-  }
+  assertCanEditQuote(quote.status);
   return quote;
 }
 
@@ -618,4 +760,16 @@ function roundMoney(value: number) {
 
 function round4(value: number) {
   return Math.round(value * 10000) / 10000;
+}
+
+function generatePublicToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Hex(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

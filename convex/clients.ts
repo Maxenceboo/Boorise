@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { cleanOptionalString, cleanRequiredString, requireCurrentOrganizationId } from "./app";
+import { cleanOptionalString, cleanRequiredString, logActivity, requireBusinessWrite, requireCurrentOrganizationId } from "./app";
 
 export const list = query({
   args: { includeInactive: v.optional(v.boolean()) },
@@ -57,17 +57,32 @@ export const activity = query({
         .take(100),
     ]);
     const unpaidInvoices = clientInvoices.filter((invoice) => invoice.status !== "paid" && invoice.status !== "void");
+    const acceptedQuotes = clientQuotes.filter((quote) => quote.status === "accepted" || quote.status === "invoiced");
+    const refusedQuotes = clientQuotes.filter((quote) => quote.status === "refused");
+    const decidedQuotes = acceptedQuotes.length + refusedQuotes.length;
+    const paidInvoices = clientInvoices.filter((invoice) => invoice.status === "paid");
+    const sentUnpaidInvoices = unpaidInvoices.filter((invoice) => invoice.status === "sent" || invoice.status === "overdue");
 
     return {
       client,
       quotes: clientQuotes.slice(0, 8),
       invoices: clientInvoices.slice(0, 8),
+      unpaidInvoices: sentUnpaidInvoices.slice(0, 6),
       totals: {
         quotesTtc: roundMoney(clientQuotes.reduce((sum, quote) => sum + quote.totalTtc, 0)),
         invoicesTtc: roundMoney(clientInvoices.reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
+        paidTtc: roundMoney(paidInvoices.reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
         unpaidTtc: roundMoney(unpaidInvoices.reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
-        acceptedQuotes: clientQuotes.filter((quote) => quote.status === "accepted" || quote.status === "invoiced").length,
+        acceptedQuotes: acceptedQuotes.length,
+        refusedQuotes: refusedQuotes.length,
+        draftQuotes: clientQuotes.filter((quote) => quote.status === "draft").length,
+        sentQuotes: clientQuotes.filter((quote) => quote.status === "sent").length,
         unpaidInvoices: unpaidInvoices.length,
+        paidInvoices: paidInvoices.length,
+        conversionRate: decidedQuotes > 0 ? Math.round((acceptedQuotes.length / decidedQuotes) * 100) : null,
+        averageAcceptedQuoteTtc: acceptedQuotes.length > 0 ? roundMoney(acceptedQuotes.reduce((sum, quote) => sum + quote.totalTtc, 0) / acceptedQuotes.length) : 0,
+        lastQuoteAt: clientQuotes[0]?.issueDate ?? null,
+        lastInvoiceAt: clientInvoices[0]?.issueDate ?? null,
       },
     };
   },
@@ -91,10 +106,11 @@ export const create = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
     const now = Date.now();
 
-    return await ctx.db.insert("clients", {
+    const clientId = await ctx.db.insert("clients", {
       organizationId,
       name: cleanRequiredString(args.name, "Le nom du client"),
       firstName: cleanOptionalString(args.firstName),
@@ -114,6 +130,8 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await logActivity(ctx, "client.created", "client", clientId, `Client cree: ${args.companyName || args.name}`);
+    return clientId;
   },
 });
 
@@ -137,7 +155,8 @@ export const update = mutation({
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
     const client = await ctx.db.get(args.clientId);
     if (!client || client.organizationId !== organizationId) {
       throw new Error("Client introuvable");
@@ -161,6 +180,7 @@ export const update = mutation({
       active: args.active ?? client.active ?? true,
       updatedAt: Date.now(),
     });
+    await logActivity(ctx, "client.updated", "client", args.clientId, `Client modifie: ${args.companyName || args.name}`);
 
     return args.clientId;
   },
@@ -169,7 +189,8 @@ export const update = mutation({
 export const archive = mutation({
   args: { clientId: v.id("clients") },
   handler: async (ctx, args) => {
-    const organizationId = await requireCurrentOrganizationId(ctx);
+    const { organization } = await requireBusinessWrite(ctx);
+    const organizationId = organization._id;
     const client = await ctx.db.get(args.clientId);
     if (!client || client.organizationId !== organizationId) {
       throw new Error("Client introuvable");
@@ -179,6 +200,7 @@ export const archive = mutation({
       active: false,
       updatedAt: Date.now(),
     });
+    await logActivity(ctx, "client.archived", "client", args.clientId, `Client archive: ${client.companyName ?? client.name}`);
 
     return args.clientId;
   },

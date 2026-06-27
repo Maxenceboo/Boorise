@@ -40,6 +40,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Typecheck Convex
+        run: npx tsc -p convex/tsconfig.json
+
       - name: Lint frontend
         working-directory: frontend
         run: npm run lint
@@ -49,6 +52,9 @@ jobs:
         run: npm run build
         env:
           VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL_DEV || vars.VITE_CONVEX_URL_PROD }}
+
+      - name: Run tests
+        run: npm test
 
   deploy:
     name: Deploy production

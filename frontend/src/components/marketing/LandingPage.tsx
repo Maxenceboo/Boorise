@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { BooriseMark } from "@/components/brand/BooriseLogo";
 import { Button } from "@/components/ui/app";
+import { useSeo } from "@/lib/seo";
 
 export function LandingPage({
   onSignIn,
@@ -21,6 +22,13 @@ export function LandingPage({
   onSignIn: () => void;
   onSignUp: () => void;
 }) {
+  useSeo({
+    title: "Boorise - ERP pour artisans du batiment",
+    description:
+      "ERP SaaS pour artisans: clients, materiaux, prestations, devis, factures, calculs de pertes, lots, marges et suivi d'equipe.",
+    canonicalPath: "/",
+  });
+
   return (
     <main className="landing-page">
       <div className="landing-bg-shapes" aria-hidden="true">
@@ -54,7 +62,6 @@ export function LandingPage({
 
       <section className="landing-hero" id="produit">
         <div className="landing-hero-copy">
-          <div className="eyebrow">ERP terrain pour artisans</div>
           <h1>Boorise pour artisans</h1>
           <p>
             Boorise centralise tes clients, ton catalogue, tes devis et tes

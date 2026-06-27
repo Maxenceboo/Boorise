@@ -1,12 +1,14 @@
-import { useMutation, useQuery } from "convex/react";
-import { Check, Coins, Copy, Edit3, FileText, Plus, Printer, ReceiptText, Send, Trash2, UserPlus, X } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { Check, ClipboardList, Coins, Download, Edit3, ExternalLink, FileText, Plus, Printer, ReceiptText, RotateCcw, Save, Send, Star, Trash2, UserPlus, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "#convex/_generated/api";
 import type { Doc, Id } from "#convex/_generated/dataModel";
 import {
   Badge,
   Button,
+  ConfirmModal,
   DataTable,
+  DocumentTimeline,
   EmptyState,
   Field,
   FormSection,
@@ -23,9 +25,10 @@ import {
 import { useToast } from "@/components/ui/toast-context";
 import { useBlurAutosave } from "@/hooks/useBlurAutosave";
 import { friendlyError } from "@/lib/errors";
+import { downloadQuotePdf, quotePdfAttachment } from "@/lib/documentPdf";
 import { formatCurrency, formatDate } from "@/lib/format";
 
-type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced";
+type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced" | "void";
 type LineKind = "material" | "service" | "custom";
 type Material = Doc<"materials">;
 type Service = Doc<"services">;
@@ -34,6 +37,28 @@ type QuoteBundle = {
   quote: Doc<"quotes">;
   client: Doc<"clients"> | null;
   items: Doc<"quoteItems">[];
+  emailEvents: Doc<"documentEmailEvents">[];
+  billing?: QuoteBillingSummary;
+  business: QuoteBusinessSummary;
+};
+type QuoteBillingSummary = {
+  depositIssuedHt: number;
+  depositIssuedTtc: number;
+  remainingToInvoiceHt: number;
+  remainingToInvoiceTtc: number;
+  hasIssuedDeposits: boolean;
+  canCreateBalance: boolean;
+  finalInvoiceId?: Id<"invoices">;
+};
+type QuoteBusinessSummary = {
+  lineCount: number;
+  salesHt: number;
+  materialCostHt: number;
+  serviceCostHt: number;
+  customCostHt: number;
+  realCostHt: number;
+  marginHt: number;
+  marginRate: number;
 };
 
 const statusLabels: Record<QuoteStatus, string> = {
@@ -42,6 +67,7 @@ const statusLabels: Record<QuoteStatus, string> = {
   accepted: "Accepte",
   refused: "Refuse",
   invoiced: "Facture",
+  void: "Annule",
 };
 
 const statusTones: Record<QuoteStatus, "slate" | "indigo" | "emerald" | "rose" | "cyan"> = {
@@ -50,6 +76,7 @@ const statusTones: Record<QuoteStatus, "slate" | "indigo" | "emerald" | "rose" |
   accepted: "emerald",
   refused: "rose",
   invoiced: "cyan",
+  void: "rose",
 };
 
 const quoteStatusOrder: Record<QuoteStatus, number> = {
@@ -58,6 +85,15 @@ const quoteStatusOrder: Record<QuoteStatus, number> = {
   accepted: 3,
   invoiced: 4,
   refused: 5,
+  void: 6,
+};
+
+type ConfirmState = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "primary" | "danger" | "success";
+  action: () => Promise<void>;
 };
 
 const emptyQuote = {
@@ -114,6 +150,12 @@ const emptyQuickMaterial = {
   quantityPerLot: "",
 };
 
+const emptyTemplateForm = {
+  name: "",
+  category: "Personnalise",
+  description: "",
+};
+
 const materialUnits: MaterialUnit[] = ["piece", "metre", "m2", "m3", "litre", "kilogramme", "lot"];
 
 export function QuotesPage() {
@@ -123,6 +165,7 @@ export function QuotesPage() {
   const materials = useQuery(api.materials.list, {});
   const services = useQuery(api.services.list, {});
   const quotes = useQuery(api.quotes.list);
+  const quoteTemplates = useQuery(api.quoteTemplates.list);
   const createClient = useMutation(api.clients.create);
   const createMaterial = useMutation(api.materials.create);
   const createDraft = useMutation(api.quotes.createDraft);
@@ -132,13 +175,23 @@ export function QuotesPage() {
   const removeItem = useMutation(api.quotes.removeItem);
   const changeStatus = useMutation(api.quotes.changeStatus);
   const convertToInvoice = useMutation(api.quotes.convertToInvoice);
-  const duplicateQuote = useMutation(api.quotes.duplicate);
+  const deleteDraftQuote = useMutation(api.quotes.deleteDraft);
+  const createQuoteRevision = useMutation(api.quotes.createRevision);
+  const createPublicLink = useMutation(api.quotes.createPublicLink);
+  const createDepositInvoice = useMutation(api.invoices.createDepositFromQuote);
+  const createBalanceInvoice = useMutation(api.invoices.createBalanceFromQuote);
+  const sendQuoteEmail = useAction(api.documentEmails.sendQuoteEmail);
+  const applyQuoteTemplate = useMutation(api.quoteTemplates.applyToQuote);
+  const createQuoteTemplateFromQuote = useMutation(api.quoteTemplates.createFromQuote);
+  const toggleQuoteTemplateFavorite = useMutation(api.quoteTemplates.toggleFavorite);
   const [quoteForm, setQuoteForm] = useState(emptyQuote);
   const [editQuoteForm, setEditQuoteForm] = useState(emptyQuote);
   const [lineForm, setLineForm] = useState(emptyLine);
   const [editLineForm, setEditLineForm] = useState(emptyLine);
   const [quickClientForm, setQuickClientForm] = useState(emptyQuickClient);
   const [quickMaterialForm, setQuickMaterialForm] = useState(emptyQuickMaterial);
+  const [templateForm, setTemplateForm] = useState(emptyTemplateForm);
+  const [templateMultiplier, setTemplateMultiplier] = useState(1);
   const [selectedQuoteId, setSelectedQuoteId] = useState<Id<"quotes"> | null>(null);
   const [quoteModal, setQuoteModal] = useState(false);
   const [editQuoteModal, setEditQuoteModal] = useState(false);
@@ -147,6 +200,11 @@ export function QuotesPage() {
   const [editingLineId, setEditingLineId] = useState<Id<"quoteItems"> | null>(null);
   const [quickClientModal, setQuickClientModal] = useState(false);
   const [quickMaterialModal, setQuickMaterialModal] = useState(false);
+  const [templateModal, setTemplateModal] = useState(false);
+  const [depositModal, setDepositModal] = useState(false);
+  const [depositRate, setDepositRate] = useState(30);
+  const [confirmAction, setConfirmAction] = useState<ConfirmState | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
   const [scrollToSelectedQuote, setScrollToSelectedQuote] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -156,6 +214,8 @@ export function QuotesPage() {
   const isQuickBusinessClient = quickClientForm.customerType === "business";
   const selectedMaterial = (materials ?? []).find((material) => material._id === lineForm.materialId) ?? null;
   const selectedService = (services ?? []).find((service) => service._id === lineForm.serviceId) ?? null;
+  const sortedMaterials = useMemo(() => [...(materials ?? [])].sort((left, right) => Number(right.favorite ?? false) - Number(left.favorite ?? false) || left.name.localeCompare(right.name, "fr-FR")), [materials]);
+  const sortedServices = useMemo(() => [...(services ?? [])].sort((left, right) => Number(right.favorite ?? false) - Number(left.favorite ?? false) || left.name.localeCompare(right.name, "fr-FR")), [services]);
   const autoSaveQuoteDetailsOnBlur = useBlurAutosave<HTMLDivElement>(() => {
     if (selectedQuote) {
       void saveQuoteDetails(false);
@@ -168,6 +228,7 @@ export function QuotesPage() {
       count: list.length,
       totalHt: list.reduce((sum, quote) => sum + quote.totalHt, 0),
       totalTtc: list.reduce((sum, quote) => sum + quote.totalTtc, 0),
+      marginHt: list.reduce((sum, quote) => sum + quote.business.marginHt, 0),
       drafts: list.filter((quote) => quote.status === "draft").length,
     };
   }, [quotes]);
@@ -195,6 +256,13 @@ export function QuotesPage() {
   }, []);
 
   useEffect(() => {
+    const focusedQuoteId = sessionStorage.getItem("boorise:focusQuoteId");
+    if (focusedQuoteId) {
+      sessionStorage.removeItem("boorise:focusQuoteId");
+      setSelectedQuoteId(focusedQuoteId as Id<"quotes">);
+      setScrollToSelectedQuote(true);
+      return;
+    }
     if (selectedQuoteId || !quotes?.length) {
       return;
     }
@@ -412,7 +480,40 @@ export function QuotesPage() {
     }
   }
 
-  async function setStatus(quoteId: Id<"quotes">, status: "sent" | "accepted" | "refused") {
+  function requestStatus(quote: Doc<"quotes">, status: "sent" | "accepted" | "refused" | "void") {
+    const copy: Record<"sent" | "accepted" | "refused" | "void", ConfirmState> = {
+      sent: {
+        title: "Marquer le devis comme envoye ?",
+        description: "Cette action indique que le devis a ete transmis au client et ajoute l'etape a la timeline.",
+        confirmLabel: "Marquer envoye",
+        action: () => setStatus(quote._id, "sent"),
+      },
+      accepted: {
+        title: "Marquer le devis comme accepte ?",
+        description: "Le devis sera verrouille pour eviter les modifications apres accord client.",
+        confirmLabel: "Marquer accepte",
+        tone: "success",
+        action: () => setStatus(quote._id, "accepted"),
+      },
+      refused: {
+        title: "Marquer le devis comme refuse ?",
+        description: "Le devis restera conserve dans l'historique, mais ne sera pas facture.",
+        confirmLabel: "Marquer refuse",
+        tone: "danger",
+        action: () => setStatus(quote._id, "refused"),
+      },
+      void: {
+        title: "Annuler ce devis ?",
+        description: "Le devis sera conserve comme annule et ne pourra plus etre modifie.",
+        confirmLabel: "Annuler le devis",
+        tone: "danger",
+        action: () => setStatus(quote._id, "void"),
+      },
+    };
+    setConfirmAction(copy[status]);
+  }
+
+  async function setStatus(quoteId: Id<"quotes">, status: "sent" | "accepted" | "refused" | "void") {
     setPending(`${quoteId}-${status}`);
     setError(null);
     try {
@@ -424,6 +525,16 @@ export function QuotesPage() {
     } finally {
       setPending(null);
     }
+  }
+
+  function requestInvoiceQuote(quote: Doc<"quotes">) {
+    setConfirmAction({
+      title: "Facturer ce devis ?",
+      description: "Une facture brouillon sera creee et le devis sera verrouille comme facture.",
+      confirmLabel: "Creer la facture",
+      tone: "success",
+      action: () => invoiceQuote(quote._id),
+    });
   }
 
   async function invoiceQuote(quoteId: Id<"quotes">) {
@@ -440,18 +551,234 @@ export function QuotesPage() {
     }
   }
 
-  async function copyQuote(quoteId: Id<"quotes">) {
-    setPending(`copy-${quoteId}`);
+  async function createDepositFromSelectedQuote() {
+    if (!selectedQuote) {
+      return;
+    }
+    setPending(`deposit-${selectedQuote.quote._id}`);
     setError(null);
     try {
-      const newQuoteId = await duplicateQuote({ quoteId });
-      selectQuote(newQuoteId);
+      const invoiceId = await createDepositInvoice({
+        quoteId: selectedQuote.quote._id,
+        depositRate,
+      });
+      setDepositModal(false);
+      sessionStorage.setItem("boorise:focusInvoiceId", invoiceId);
+      window.location.href = "/factures";
     } catch (err) {
-      const message = friendlyError(err, "Duplication impossible.");
+      const message = friendlyError(err, "Creation de l'acompte impossible.");
       setError(message);
       toast.error(message);
     } finally {
       setPending(null);
+    }
+  }
+
+  async function createBalanceFromSelectedQuote() {
+    if (!selectedQuote) {
+      return;
+    }
+    setPending(`balance-${selectedQuote.quote._id}`);
+    setError(null);
+    try {
+      const invoiceId = await createBalanceInvoice({
+        quoteId: selectedQuote.quote._id,
+      });
+      sessionStorage.setItem("boorise:focusInvoiceId", invoiceId);
+      window.location.href = "/factures";
+    } catch (err) {
+      const message = friendlyError(err, "Creation du solde impossible.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function requestCreateRevision(quote: Doc<"quotes">) {
+    setConfirmAction({
+      title: "Creer une revision ?",
+      description: "Un nouveau devis brouillon sera cree avec les memes lignes. Le document original restera conserve comme preuve.",
+      confirmLabel: "Creer la revision",
+      action: () => createRevision(quote._id),
+    });
+  }
+
+  async function createRevision(quoteId: Id<"quotes">) {
+    setPending(`revision-${quoteId}`);
+    setError(null);
+    try {
+      const revisionId = await createQuoteRevision({ quoteId });
+      setSelectedQuoteId(revisionId);
+      toast.success("Revision creee en brouillon.");
+    } catch (err) {
+      const message = friendlyError(err, "Revision impossible.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function openPublicQuote(quote: Doc<"quotes">) {
+    setPending(`public-${quote._id}`);
+    setError(null);
+    try {
+      const { token } = await createPublicLink({ quoteId: quote._id });
+      const url = `${window.location.origin}/public/quote/${encodeURIComponent(token)}`;
+      await navigator.clipboard?.writeText(url).catch(() => undefined);
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success("Lien client ouvert et copie.");
+    } catch (err) {
+      const message = friendlyError(err, "Lien client impossible.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function sendSelectedQuoteEmail() {
+    if (!selectedQuote) {
+      return;
+    }
+    setPending(`email-${selectedQuote.quote._id}`);
+    setError(null);
+    try {
+      const attachment = quotePdfAttachment(selectedQuote, organization);
+      const result = await sendQuoteEmail({
+        quoteId: selectedQuote.quote._id,
+        attachment,
+      });
+      toast.success(`Devis envoye a ${result.recipient}.`);
+    } catch (err) {
+      const message = friendlyError(err, "Envoi du devis impossible.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function focusLineEditor() {
+    document.querySelector(".line-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function openLinkedInvoice(quote: Doc<"quotes">) {
+    if (!quote.convertedInvoiceId) {
+      return;
+    }
+    sessionStorage.setItem("boorise:focusInvoiceId", quote.convertedInvoiceId);
+    window.location.href = "/factures";
+  }
+
+  async function applyTemplate(templateKey: string) {
+    if (!selectedQuoteId) {
+      setError("Selectionne d'abord un devis brouillon.");
+      return;
+    }
+    setPending(`template-${templateKey}`);
+    setError(null);
+    try {
+      const result = await applyQuoteTemplate({
+        quoteId: selectedQuoteId,
+        templateKey,
+        quantityMultiplier: templateMultiplier,
+      });
+      toast.success(`${result.inserted} ligne(s) ajoutee(s) depuis le modele.`);
+    } catch (err) {
+      const message = friendlyError(err, "Modele impossible a appliquer.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function openSaveTemplateModal() {
+    if (!selectedQuote) {
+      return;
+    }
+    setTemplateForm({
+      name: selectedQuote.quote.title,
+      category: "Personnalise",
+      description: `Modele cree depuis ${selectedQuote.quote.number}`,
+    });
+    setTemplateModal(true);
+  }
+
+  async function saveCurrentQuoteAsTemplate() {
+    if (!selectedQuote) {
+      return;
+    }
+    setPending("save-template");
+    setError(null);
+    try {
+      await createQuoteTemplateFromQuote({
+        quoteId: selectedQuote.quote._id,
+        name: templateForm.name,
+        category: optional(templateForm.category),
+        description: optional(templateForm.description),
+      });
+      setTemplateModal(false);
+      toast.success("Modele de devis enregistre.");
+    } catch (err) {
+      const message = friendlyError(err, "Modele impossible a enregistrer.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function favoriteTemplate(templateId: Id<"quoteTemplates">, favorite: boolean) {
+    try {
+      await toggleQuoteTemplateFavorite({ templateId, favorite });
+    } catch (err) {
+      const message = friendlyError(err, "Favori impossible a modifier.");
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  function requestDeleteQuote(quote: Doc<"quotes">) {
+    setConfirmAction({
+      title: "Supprimer ce brouillon ?",
+      description: "Cette suppression retire definitivement le devis brouillon et toutes ses lignes. Les devis envoyes, acceptes ou factures ne peuvent pas etre supprimes.",
+      confirmLabel: "Supprimer le brouillon",
+      tone: "danger",
+      action: () => deleteQuote(quote._id),
+    });
+  }
+
+  async function deleteQuote(quoteId: Id<"quotes">) {
+    setPending(`delete-${quoteId}`);
+    setError(null);
+    try {
+      await deleteDraftQuote({ quoteId });
+      if (selectedQuoteId === quoteId) {
+        setSelectedQuoteId(null);
+      }
+      toast.success("Brouillon supprime.");
+    } catch (err) {
+      const message = friendlyError(err, "Suppression impossible.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function runConfirmAction() {
+    if (!confirmAction) {
+      return;
+    }
+    setConfirmPending(true);
+    try {
+      await confirmAction.action();
+      setConfirmAction(null);
+    } finally {
+      setConfirmPending(false);
     }
   }
 
@@ -559,15 +886,20 @@ export function QuotesPage() {
   }
 
   async function deleteLine(itemId: Id<"quoteItems">) {
-    if (window.confirm("Supprimer cette ligne ?")) {
-      await removeItem({ itemId });
-    }
+    setConfirmAction({
+      title: "Supprimer cette ligne ?",
+      description: "La ligne sera retiree du devis et les totaux seront recalcules.",
+      confirmLabel: "Supprimer la ligne",
+      tone: "danger",
+      action: async () => {
+        await removeItem({ itemId });
+      },
+    });
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Chiffrage"
         title="Devis"
         description="Un atelier de chiffrage clair : choisir un devis, ajouter les lignes, controler les pertes et valider les totaux."
       />
@@ -591,8 +923,8 @@ export function QuotesPage() {
         </div>
         <div>
           <FileText className="h-5 w-5" />
-          <span>Brouillons</span>
-          <strong>{quoteStats.drafts}</strong>
+          <span>Marge reelle</span>
+          <strong>{formatCurrency(quoteStats.marginHt)}</strong>
         </div>
       </div>
 
@@ -631,23 +963,15 @@ export function QuotesPage() {
               },
               { key: "client", header: "Client", sortValue: (quote) => formatClientName(quote.client), render: (quote) => formatClientName(quote.client) },
               { key: "date", header: "Date", sortValue: (quote) => quote.issueDate, render: (quote) => formatDate(quote.issueDate) },
+              { key: "cost", header: "Cout", sortValue: (quote) => quote.business.realCostHt, render: (quote) => formatCurrency(quote.business.realCostHt) },
+              { key: "margin", header: "Marge", sortValue: (quote) => quote.business.marginHt, render: (quote) => (
+                <span className={quote.business.marginHt < 0 ? "text-[#E54715] font-semibold" : "font-semibold"}>
+                  {formatCurrency(quote.business.marginHt)}
+                </span>
+              ) },
               { key: "totalHt", header: "HT", sortValue: (quote) => quote.totalHt, render: (quote) => formatCurrency(quote.totalHt) },
               { key: "totalTtc", header: "TTC", sortValue: (quote) => quote.totalTtc, render: (quote) => <strong>{formatCurrency(quote.totalTtc)}</strong> },
               { key: "status", header: "Statut", sortValue: (quote) => quoteStatusOrder[quote.status as QuoteStatus], render: (quote) => <Badge tone={statusTones[quote.status as QuoteStatus]}>{statusLabels[quote.status as QuoteStatus]}</Badge> },
-              {
-                key: "actions",
-                header: "",
-                className: "actions-cell",
-                sortable: false,
-                render: (quote) => (
-                  <div className="row-actions">
-                    <IconButton label="Dupliquer" onClick={() => void copyQuote(quote._id)}><Copy className="h-4 w-4" /></IconButton>
-                    <IconButton label="Envoye" onClick={() => void setStatus(quote._id, "sent")}><Send className="h-4 w-4" /></IconButton>
-                    <IconButton label="Accepte" variant="success" onClick={() => void setStatus(quote._id, "accepted")}><Check className="h-4 w-4" /></IconButton>
-                    <IconButton label="Refuse" variant="danger" onClick={() => void setStatus(quote._id, "refused")}><X className="h-4 w-4" /></IconButton>
-                  </div>
-                ),
-              },
             ]}
           />
         </Panel>
@@ -673,103 +997,153 @@ export function QuotesPage() {
                   <strong>{formatCurrency(selectedQuote.quote.totalTtc)}</strong>
                   <span>{formatCurrency(selectedQuote.quote.totalHt)} HT</span>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={openEditQuote}><Edit3 className="h-4 w-4" />Modifier</Button>
-                  <Button variant="outline" onClick={() => setPreviewModal(true)}><Printer className="h-4 w-4" />Apercu</Button>
-                  <Button variant="outline" disabled={pending === `copy-${selectedQuote.quote._id}`} onClick={() => void copyQuote(selectedQuote.quote._id)}><Copy className="h-4 w-4" />Dupliquer</Button>
-                  <Button disabled={selectedQuote.quote.status === "invoiced"} onClick={() => void invoiceQuote(selectedQuote.quote._id)}><ReceiptText className="h-4 w-4" />Facturer</Button>
-                </div>
+                <QuoteWorkflowActions
+                  bundle={selectedQuote}
+                  pending={pending}
+                  onEdit={openEditQuote}
+                  onPreview={() => setPreviewModal(true)}
+                  onSaveTemplate={openSaveTemplateModal}
+                  onOpenPublicLink={(quote) => void openPublicQuote(quote)}
+                  onEmail={() => void sendSelectedQuoteEmail()}
+                  onStatus={requestStatus}
+                  onInvoice={requestInvoiceQuote}
+                  onDeposit={() => setDepositModal(true)}
+                  onBalance={() => void createBalanceFromSelectedQuote()}
+                  onRevision={requestCreateRevision}
+                  onDelete={requestDeleteQuote}
+                  onFocusLines={focusLineEditor}
+                  onOpenInvoice={openLinkedInvoice}
+                />
               </div>
 
-              <div className="quote-workspace">
-                <div className="line-editor">
-                  <div className="line-editor-head">
-                    <div>
-                      <span>Ligne de devis</span>
-                      <strong>Ajouter au chiffrage</strong>
-                    </div>
-                    <div className="line-type-toggle" aria-label="Type de ligne">
-                      {(["material", "service", "custom"] as LineKind[]).map((kind) => (
-                        <button key={kind} className={lineForm.kind === kind ? "active" : ""} onClick={() => setLineForm({ ...emptyLine, kind })}>
-                          {kind === "material" ? "Materiau" : kind === "service" ? "Prestation" : "Libre"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              <DocumentTimeline events={buildQuoteTimeline(selectedQuote.quote, selectedQuote.emailEvents ?? [])} />
 
-                  <div className="line-editor-grid">
-                    {lineForm.kind === "material" ? (
-                    <Field label="Materiau" required>
-                        <div className="quote-client-picker">
-                          <SelectInput value={lineForm.materialId} onChange={(event) => setLineForm({ ...lineForm, materialId: event.target.value })}>
-                            <option value="">Choisir un materiau</option>
-                            {(materials ?? []).map((material) => <option key={material._id} value={material._id}>{material.name}</option>)}
+              <QuoteBusinessPanel business={selectedQuote.business} />
+
+              {selectedQuote.billing?.hasIssuedDeposits ? <QuoteBillingPanel billing={selectedQuote.billing} /> : null}
+
+              {selectedQuote.quote.clientDecision ? (
+                <Notice kind={selectedQuote.quote.clientDecision === "accepted" ? "success" : "warning"}>
+                  Decision client: {selectedQuote.quote.clientDecision === "accepted" ? "accepte" : "refuse"} le {formatDate(selectedQuote.quote.clientDecisionAt)} par {selectedQuote.quote.clientSignature ?? "signature non renseignee"}
+                  {selectedQuote.quote.clientDecisionIp ? ` - IP ${selectedQuote.quote.clientDecisionIp}` : ""}.
+                </Notice>
+              ) : null}
+
+              {isQuoteEditable(selectedQuote.quote) ? (
+                <>
+                <QuoteTemplatePanel
+                  templates={quoteTemplates ?? []}
+                  loading={quoteTemplates === undefined}
+                  multiplier={templateMultiplier}
+                  onMultiplierChange={setTemplateMultiplier}
+                  pending={pending}
+                  onApply={(templateKey) => void applyTemplate(templateKey)}
+                  onToggleFavorite={(templateId, favorite) => void favoriteTemplate(templateId, favorite)}
+                />
+                <div className="quote-workspace">
+                  <div className="line-editor">
+                    <div className="line-editor-head">
+                      <div>
+                        <span>Ligne de devis</span>
+                        <strong>Ajouter au chiffrage</strong>
+                      </div>
+                      <div className="line-type-toggle" aria-label="Type de ligne">
+                        {(["material", "service", "custom"] as LineKind[]).map((kind) => (
+                          <button key={kind} className={lineForm.kind === kind ? "active" : ""} onClick={() => setLineForm({ ...emptyLine, kind })}>
+                            {kind === "material" ? "Materiau" : kind === "service" ? "Prestation" : "Libre"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="line-editor-grid">
+                      {lineForm.kind === "material" ? (
+                      <Field label="Materiau" required>
+                          <div className="quote-client-picker">
+                            <SelectInput value={lineForm.materialId} onChange={(event) => setLineForm({ ...lineForm, materialId: event.target.value })}>
+                              <option value="">Choisir un materiau</option>
+                              {sortedMaterials.map((material) => <option key={material._id} value={material._id}>{material.favorite ? "★ " : ""}{material.name}</option>)}
+                            </SelectInput>
+                            <Button type="button" variant="outline" onClick={() => setQuickMaterialModal(true)}>
+                              <Plus className="h-4 w-4" />
+                              Materiau
+                            </Button>
+                          </div>
+                        </Field>
+                      ) : null}
+                      {lineForm.kind === "service" ? (
+                      <Field label="Prestation" required>
+                          <SelectInput value={lineForm.serviceId} onChange={(event) => setLineForm({ ...lineForm, serviceId: event.target.value })}>
+                            <option value="">Choisir une prestation</option>
+                            {sortedServices.map((service) => <option key={service._id} value={service._id}>{service.favorite ? "★ " : ""}{service.name}</option>)}
                           </SelectInput>
-                          <Button type="button" variant="outline" onClick={() => setQuickMaterialModal(true)}>
-                            <Plus className="h-4 w-4" />
-                            Materiau
-                          </Button>
-                        </div>
+                        </Field>
+                      ) : null}
+                      <Field label="Designation" optional>
+                        <TextInput value={lineForm.description} placeholder={selectedMaterial?.name ?? selectedService?.name ?? "Ex: pose, fourniture, ajustement..."} onChange={(event) => setLineForm({ ...lineForm, description: event.target.value })} />
                       </Field>
-                    ) : null}
-                    {lineForm.kind === "service" ? (
-                    <Field label="Prestation" required>
-                        <SelectInput value={lineForm.serviceId} onChange={(event) => setLineForm({ ...lineForm, serviceId: event.target.value })}>
-                          <option value="">Choisir une prestation</option>
-                          {(services ?? []).map((service) => <option key={service._id} value={service._id}>{service.name}</option>)}
-                        </SelectInput>
+                      <Field label="Lot de travaux" optional>
+                        <TextInput value={lineForm.section} placeholder="Ex: Fournitures, Pose, Finitions..." onChange={(event) => setLineForm({ ...lineForm, section: event.target.value })} />
                       </Field>
+                      {lineForm.kind === "custom" ? <Field label="Unite" required><TextInput value={lineForm.unit} onChange={(event) => setLineForm({ ...lineForm, unit: event.target.value })} /></Field> : null}
+                      <Field label="Besoin chantier" required><NumberInput min={0.0001} step="0.01" value={lineForm.quantity} onChange={(event) => setLineForm({ ...lineForm, quantity: Number(event.target.value) })} /></Field>
+                      <Field label="Prix HT force" optional><NumberInput min={0} step="0.01" value={lineForm.unitPriceHt} placeholder={selectedMaterial ? String(selectedMaterial.purchasePriceHt) : selectedService ? String(selectedService.unitPriceHt) : "0"} onChange={(event) => setLineForm({ ...lineForm, unitPriceHt: event.target.value })} /></Field>
+                      <Field label="Perte chantier (%)" optional><NumberInput min={0} max={100} step="0.01" value={lineForm.wasteRate} placeholder={selectedMaterial ? String(selectedMaterial.defaultWasteRate) : "0"} onChange={(event) => setLineForm({ ...lineForm, wasteRate: event.target.value })} /></Field>
+                      <Field label="Marge (%)" optional><NumberInput min={0} max={100} step="0.01" value={lineForm.marginRate} onChange={(event) => setLineForm({ ...lineForm, marginRate: Number(event.target.value) })} /></Field>
+                    </div>
+
+                    {lineForm.kind === "material" && selectedMaterial ? (
+                      <div className="line-context">
+                        <strong>{selectedMaterial.name}</strong>
+                        <span>
+                          Besoin en {formatUnit(materialDemandUnit(selectedMaterial))} - {selectedMaterial.divisible ? "achat au besoin exact" : `achat par lot de ${formatQuantity(selectedMaterial.quantityPerLot ?? 1, materialDemandUnit(selectedMaterial))}`} - perte defaut {selectedMaterial.defaultWasteRate}%
+                        </span>
+                      </div>
                     ) : null}
-                    <Field label="Designation" optional>
-                      <TextInput value={lineForm.description} placeholder={selectedMaterial?.name ?? selectedService?.name ?? "Ex: pose, fourniture, ajustement..."} onChange={(event) => setLineForm({ ...lineForm, description: event.target.value })} />
-                    </Field>
-                    <Field label="Lot de travaux" optional>
-                      <TextInput value={lineForm.section} placeholder="Ex: Fournitures, Pose, Finitions..." onChange={(event) => setLineForm({ ...lineForm, section: event.target.value })} />
-                    </Field>
-                    {lineForm.kind === "custom" ? <Field label="Unite" required><TextInput value={lineForm.unit} onChange={(event) => setLineForm({ ...lineForm, unit: event.target.value })} /></Field> : null}
-                    <Field label="Besoin chantier" required><NumberInput min={0.0001} step="0.01" value={lineForm.quantity} onChange={(event) => setLineForm({ ...lineForm, quantity: Number(event.target.value) })} /></Field>
-                    <Field label="Prix HT force" optional><NumberInput min={0} step="0.01" value={lineForm.unitPriceHt} placeholder={selectedMaterial ? String(selectedMaterial.purchasePriceHt) : selectedService ? String(selectedService.unitPriceHt) : "0"} onChange={(event) => setLineForm({ ...lineForm, unitPriceHt: event.target.value })} /></Field>
-                    <Field label="Perte chantier (%)" optional><NumberInput min={0} max={100} step="0.01" value={lineForm.wasteRate} placeholder={selectedMaterial ? String(selectedMaterial.defaultWasteRate) : "0"} onChange={(event) => setLineForm({ ...lineForm, wasteRate: event.target.value })} /></Field>
-                    <Field label="Marge (%)" optional><NumberInput min={0} max={100} step="0.01" value={lineForm.marginRate} onChange={(event) => setLineForm({ ...lineForm, marginRate: Number(event.target.value) })} /></Field>
+                    {lineForm.kind === "service" && selectedService ? (
+                      <div className="line-context">
+                        <strong>{selectedService.name}</strong>
+                        <span>{formatCurrency(selectedService.unitPriceHt)} HT / {selectedService.unit}</span>
+                      </div>
+                    ) : null}
+
+                    <Button disabled={pending === "line"} onClick={() => void addLine()}><Plus className="h-4 w-4" />Ajouter la ligne</Button>
                   </div>
-
-                  {lineForm.kind === "material" && selectedMaterial ? (
-                    <div className="line-context">
-                      <strong>{selectedMaterial.name}</strong>
-                      <span>
-                        Besoin en {formatUnit(materialDemandUnit(selectedMaterial))} - {selectedMaterial.divisible ? "achat au besoin exact" : `achat par lot de ${formatQuantity(selectedMaterial.quantityPerLot ?? 1, materialDemandUnit(selectedMaterial))}`} - perte defaut {selectedMaterial.defaultWasteRate}%
-                      </span>
-                    </div>
-                  ) : null}
-                  {lineForm.kind === "service" && selectedService ? (
-                    <div className="line-context">
-                      <strong>{selectedService.name}</strong>
-                      <span>{formatCurrency(selectedService.unitPriceHt)} HT / {selectedService.unit}</span>
-                    </div>
-                  ) : null}
-
-                  <Button disabled={pending === "line"} onClick={() => void addLine()}><Plus className="h-4 w-4" />Ajouter la ligne</Button>
+                  <div className="calc-card">
+                    <strong>Calcul instantane</strong>
+                    <Calc label="Besoin saisi" value={formatPreviewNeed(lineForm, selectedMaterial)} />
+                    <Calc label="Avec pertes" value={formatPreviewWithWaste(lineForm, preview, selectedMaterial)} />
+                    <Calc label="A acheter" value={formatPreviewPurchased(lineForm, preview, selectedMaterial)} />
+                    <Calc label="Livre" value={formatPreviewDelivered(lineForm, preview, selectedMaterial)} />
+                    <Calc label="Perte generee" value={formatPreviewWaste(lineForm, preview, selectedMaterial)} />
+                    <Calc label="Cout reel" value={formatCurrency(preview.realCostHt)} />
+                    <Calc label="Total HT" value={formatCurrency(preview.totalHt)} />
+                    {lineForm.kind === "material" && selectedMaterial ? <PreviewSketch form={lineForm} material={selectedMaterial} preview={preview} /> : null}
+                  </div>
                 </div>
-                <div className="calc-card">
-                  <strong>Calcul instantane</strong>
-                  <Calc label="Besoin saisi" value={formatPreviewNeed(lineForm, selectedMaterial)} />
-                  <Calc label="Avec pertes" value={formatPreviewWithWaste(lineForm, preview, selectedMaterial)} />
-                  <Calc label="A acheter" value={formatPreviewPurchased(lineForm, preview, selectedMaterial)} />
-                  <Calc label="Livre" value={formatPreviewDelivered(lineForm, preview, selectedMaterial)} />
-                  <Calc label="Perte generee" value={formatPreviewWaste(lineForm, preview, selectedMaterial)} />
-                  <Calc label="Cout reel" value={formatCurrency(preview.realCostHt)} />
-                  <Calc label="Total HT" value={formatCurrency(preview.totalHt)} />
-                  {lineForm.kind === "material" && selectedMaterial ? <PreviewSketch form={lineForm} material={selectedMaterial} preview={preview} /> : null}
-                </div>
-              </div>
+                </>
+              ) : (
+                <Notice kind="info">Ce devis est verrouille. Il reste consultable, mais ses lignes ne peuvent plus etre modifiees apres envoi, acceptation, facturation ou annulation.</Notice>
+              )}
 
-              <QuoteLinesTable items={selectedQuote.items} materials={materials ?? []} onEdit={openEditLine} onDelete={deleteLine} />
+              <QuoteLinesTable items={selectedQuote.items} materials={materials ?? []} editable={isQuoteEditable(selectedQuote.quote)} onEdit={openEditLine} onDelete={deleteLine} />
               <PurchaseList items={selectedQuote.items} materials={materials ?? []} />
             </div>
           )}
           </Panel>
         </div>
       </div>
+
+      <ConfirmModal
+        open={!!confirmAction}
+        title={confirmAction?.title ?? ""}
+        description={confirmAction?.description ?? ""}
+        confirmLabel={confirmAction?.confirmLabel ?? "Confirmer"}
+        tone={confirmAction?.tone}
+        pending={confirmPending}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => void runConfirmAction()}
+      />
 
       <Modal
         open={quoteModal}
@@ -958,6 +1332,38 @@ export function QuotesPage() {
         </div>
       </Modal>
 
+      <Modal
+        open={templateModal}
+        title="Enregistrer comme modele"
+        description="Le modele reprendra les lignes du devis actuel pour les prochains chiffrages."
+        onClose={() => setTemplateModal(false)}
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setTemplateModal(false)}>Annuler</Button>
+            <Button disabled={pending === "save-template"} onClick={() => void saveCurrentQuoteAsTemplate()}>
+              <Save className="h-4 w-4" />
+              Enregistrer
+            </Button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          {error ? <Notice kind="error">{error}</Notice> : null}
+          <FormSection title="Modele reutilisable" description="Choisis un nom court que l'equipe comprendra vite.">
+            <Field label="Nom du modele" required>
+              <TextInput aria-label="Nom du modele" value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} />
+            </Field>
+            <Field label="Categorie" optional>
+              <TextInput aria-label="Categorie du modele" value={templateForm.category} onChange={(event) => setTemplateForm({ ...templateForm, category: event.target.value })} />
+            </Field>
+            <Field label="Description" optional>
+              <TextArea aria-label="Description du modele" value={templateForm.description} onChange={(event) => setTemplateForm({ ...templateForm, description: event.target.value })} />
+            </Field>
+          </FormSection>
+        </div>
+      </Modal>
+
       <LineEditModal
         open={editLineModal}
         form={editLineForm}
@@ -979,15 +1385,42 @@ export function QuotesPage() {
           <>
             <Button variant="outline" onClick={() => setPreviewModal(false)}>Fermer</Button>
             {selectedQuote ? (
-              <Button onClick={() => printQuoteDocument(selectedQuote.quote.number)}>
-                <Printer className="h-4 w-4" />
-                Imprimer / PDF
+              <Button onClick={() => downloadQuotePdf(selectedQuote, organization)}>
+                <Download className="h-4 w-4" />
+                Telecharger PDF
               </Button>
             ) : null}
           </>
         }
       >
         {selectedQuote ? <QuoteDocument quoteBundle={selectedQuote} organization={organization} /> : null}
+      </Modal>
+
+      <Modal
+        open={depositModal && !!selectedQuote}
+        title="Facture d'acompte"
+        description={selectedQuote ? `${selectedQuote.quote.number} - ${formatCurrency(selectedQuote.quote.totalTtc)} TTC` : undefined}
+        onClose={() => setDepositModal(false)}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDepositModal(false)}>Annuler</Button>
+            <Button disabled={pending === `deposit-${selectedQuote?.quote._id}`} onClick={() => void createDepositFromSelectedQuote()}>
+              <ReceiptText className="h-4 w-4" />
+              Creer l'acompte
+            </Button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <Field label="Acompte (%)" required hint="Ex: 30 pour une facture d'acompte de 30% du devis.">
+            <NumberInput min={0.01} max={100} step="0.01" value={depositRate} onChange={(event) => setDepositRate(Number(event.target.value))} />
+          </Field>
+          <div className="deposit-preview">
+            <span>Montant estime</span>
+            <strong>{selectedQuote ? formatCurrency(selectedQuote.quote.totalTtc * depositRate / 100) : formatCurrency(0)}</strong>
+            <small>{selectedQuote ? `${formatCurrency(selectedQuote.quote.totalHt * depositRate / 100)} HT` : null}</small>
+          </div>
+        </div>
       </Modal>
 
       <Modal
@@ -1080,6 +1513,290 @@ function Calc({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function QuoteBusinessPanel({ business }: { business: QuoteBusinessSummary }) {
+  return (
+    <section className="quote-business-panel" aria-label="Marge reelle du devis">
+      <div>
+        <span>Cout materiaux</span>
+        <strong>{formatCurrency(business.materialCostHt)}</strong>
+      </div>
+      <div>
+        <span>Cout prestations</span>
+        <strong>{formatCurrency(business.serviceCostHt)}</strong>
+      </div>
+      <div>
+        <span>Cout lignes libres</span>
+        <strong>{formatCurrency(business.customCostHt)}</strong>
+      </div>
+      <div>
+        <span>Cout reel total</span>
+        <strong>{formatCurrency(business.realCostHt)}</strong>
+      </div>
+      <div className={business.marginHt < 0 ? "quote-business-danger" : "quote-business-good"}>
+        <span>Marge HT</span>
+        <strong>{formatCurrency(business.marginHt)}</strong>
+        <small>{business.marginRate.toLocaleString("fr-FR", { maximumFractionDigits: 2 })}% du HT vendu</small>
+      </div>
+    </section>
+  );
+}
+
+function QuoteBillingPanel({ billing }: { billing: QuoteBillingSummary }) {
+  return (
+    <section className="quote-business-panel" aria-label="Situation de facturation du devis">
+      <div>
+        <span>Acomptes emis</span>
+        <strong>{formatCurrency(billing.depositIssuedTtc)}</strong>
+        <small>{formatCurrency(billing.depositIssuedHt)} HT deja facture</small>
+      </div>
+      <div className={billing.canCreateBalance ? "quote-business-good" : ""}>
+        <span>Reste a facturer</span>
+        <strong>{formatCurrency(billing.remainingToInvoiceTtc)}</strong>
+        <small>{formatCurrency(billing.remainingToInvoiceHt)} HT apres deduction</small>
+      </div>
+    </section>
+  );
+}
+
+function QuoteWorkflowActions({
+  bundle,
+  pending,
+  onEdit,
+  onPreview,
+  onSaveTemplate,
+  onOpenPublicLink,
+  onEmail,
+  onStatus,
+  onInvoice,
+  onDeposit,
+  onBalance,
+  onRevision,
+  onDelete,
+  onFocusLines,
+  onOpenInvoice,
+}: {
+  bundle: QuoteBundle;
+  pending: string | null;
+  onEdit: () => void;
+  onPreview: () => void;
+  onSaveTemplate: () => void;
+  onOpenPublicLink: (quote: Doc<"quotes">) => void;
+  onEmail: () => void;
+  onStatus: (quote: Doc<"quotes">, status: "sent" | "accepted" | "refused" | "void") => void;
+  onInvoice: (quote: Doc<"quotes">) => void;
+  onDeposit: () => void;
+  onBalance: () => void;
+  onRevision: (quote: Doc<"quotes">) => void;
+  onDelete: (quote: Doc<"quotes">) => void;
+  onFocusLines: () => void;
+  onOpenInvoice: (quote: Doc<"quotes">) => void;
+}) {
+  const { quote, items } = bundle;
+  const editable = isQuoteEditable(quote);
+  const hasLines = items.length > 0;
+  const primary = getQuotePrimaryAction(bundle, {
+    onFocusLines,
+    onEmail,
+    onStatus,
+    onOpenPublicLink,
+    onInvoice,
+    onBalance,
+    onOpenInvoice,
+  });
+
+  return (
+    <section className="quote-workflow-card" aria-label="Parcours du devis">
+      <div className="quote-workflow-copy">
+        <span>Prochaine etape</span>
+        <strong>{primary.title}</strong>
+        <p>{primary.description}</p>
+      </div>
+      <div className="quote-workflow-primary">
+        {primary.action ? (
+          <Button
+            variant={primary.variant}
+            disabled={primary.disabled || (primary.pendingKey ? pending === primary.pendingKey : false)}
+            onClick={primary.action}
+          >
+            {primary.icon}
+            {primary.label}
+          </Button>
+        ) : null}
+        <details className="quote-secondary-actions">
+          <summary>Actions secondaires</summary>
+          <div>
+            {editable ? <Button variant="outline" onClick={onEdit}><Edit3 className="h-4 w-4" />Modifier</Button> : null}
+            <Button variant="outline" onClick={onPreview}><Printer className="h-4 w-4" />Apercu</Button>
+            {hasLines ? <Button variant="outline" disabled={pending === "save-template"} onClick={onSaveTemplate}><Save className="h-4 w-4" />Modele</Button> : null}
+            {quote.status !== "draft" && quote.status !== "void" ? <Button variant="outline" disabled={pending === `public-${quote._id}`} onClick={() => onOpenPublicLink(quote)}><ExternalLink className="h-4 w-4" />Lien client</Button> : null}
+            {quote.status === "accepted" ? <Button variant="outline" disabled={pending === `deposit-${quote._id}`} onClick={onDeposit}><ReceiptText className="h-4 w-4" />Acompte</Button> : null}
+            {bundle.billing?.canCreateBalance ? <Button variant="outline" disabled={pending === `balance-${quote._id}`} onClick={onBalance}><ReceiptText className="h-4 w-4" />Solde</Button> : null}
+            {quote.status === "accepted" || quote.status === "invoiced" ? <Button variant="outline" disabled={pending === `revision-${quote._id}`} onClick={() => onRevision(quote)}><RotateCcw className="h-4 w-4" />Revision</Button> : null}
+            {quote.status === "draft" || quote.status === "sent" ? <Button variant="success" onClick={() => onStatus(quote, "accepted")}><Check className="h-4 w-4" />Marquer accepte</Button> : null}
+            {quote.status === "sent" ? <Button variant="danger" onClick={() => onStatus(quote, "refused")}><X className="h-4 w-4" />Refuser</Button> : null}
+            {quote.status === "draft" ? <Button variant="danger" disabled={pending === `delete-${quote._id}`} onClick={() => onDelete(quote)}><Trash2 className="h-4 w-4" />Supprimer</Button> : null}
+            {quote.status === "sent" || quote.status === "refused" ? <Button variant="danger" onClick={() => onStatus(quote, "void")}><X className="h-4 w-4" />Annuler</Button> : null}
+          </div>
+        </details>
+      </div>
+    </section>
+  );
+}
+
+function getQuotePrimaryAction(
+  bundle: QuoteBundle,
+  handlers: {
+    onFocusLines: () => void;
+    onEmail: () => void;
+    onStatus: (quote: Doc<"quotes">, status: "sent" | "accepted" | "refused" | "void") => void;
+    onOpenPublicLink: (quote: Doc<"quotes">) => void;
+    onInvoice: (quote: Doc<"quotes">) => void;
+    onBalance: () => void;
+    onOpenInvoice: (quote: Doc<"quotes">) => void;
+  },
+) {
+  const { quote, items, client } = bundle;
+  const hasLines = items.length > 0;
+  const clientLabel = formatClientName(client);
+
+  if (quote.status === "draft" && !hasLines) {
+    return {
+      title: "Construire le chiffrage",
+      description: "Ajoute les fournitures, prestations ou lignes libres avant d'envoyer un document au client.",
+      label: "Ajouter une ligne",
+      icon: <Plus className="h-4 w-4" />,
+      variant: "primary" as const,
+      action: handlers.onFocusLines,
+    };
+  }
+
+  if (quote.status === "draft") {
+    return {
+      title: `Pret a envoyer a ${clientLabel}`,
+      description: "Le client recoit le PDF en piece jointe et un lien pour consulter puis signer le devis.",
+      label: "Envoyer au client",
+      icon: <Send className="h-4 w-4" />,
+      variant: "primary" as const,
+      pendingKey: `email-${quote._id}`,
+      action: handlers.onEmail,
+    };
+  }
+
+  if (quote.status === "sent") {
+    return {
+      title: "En attente de decision client",
+      description: "Tu peux renvoyer le PDF et le lien de signature si le client ne l'a pas encore traite.",
+      label: "Renvoyer au client",
+      icon: <Send className="h-4 w-4" />,
+      variant: "primary" as const,
+      pendingKey: `email-${quote._id}`,
+      action: handlers.onEmail,
+    };
+  }
+
+  if (quote.status === "accepted") {
+    if (bundle.billing?.canCreateBalance) {
+      return {
+        title: "Creer la facture de solde",
+        description: `Acomptes emis: ${formatCurrency(bundle.billing.depositIssuedTtc)} TTC. Reste a facturer: ${formatCurrency(bundle.billing.remainingToInvoiceTtc)} TTC.`,
+        label: "Creer le solde",
+        icon: <ReceiptText className="h-4 w-4" />,
+        variant: "success" as const,
+        pendingKey: `balance-${quote._id}`,
+        action: handlers.onBalance,
+      };
+    }
+    return {
+      title: "Accord obtenu",
+      description: "Le devis est verrouille. L'etape normale est de creer la facture issue de ce document.",
+      label: "Creer la facture",
+      icon: <ReceiptText className="h-4 w-4" />,
+      variant: "success" as const,
+      action: () => handlers.onInvoice(quote),
+    };
+  }
+
+  if (quote.status === "refused") {
+    return {
+      title: "Devis refuse",
+      description: "Tu peux renvoyer le document au client ou l'annuler s'il ne doit plus vivre.",
+      label: "Renvoyer au client",
+      icon: <Send className="h-4 w-4" />,
+      variant: "primary" as const,
+      pendingKey: `email-${quote._id}`,
+      action: handlers.onEmail,
+    };
+  }
+
+  if (quote.status === "invoiced") {
+    return {
+      title: "Facturation creee",
+      description: "Le devis sert maintenant de preuve commerciale. Les actions de paiement se font depuis la facture.",
+      label: quote.convertedInvoiceId ? "Voir la facture" : "Facture liee absente",
+      icon: <ReceiptText className="h-4 w-4" />,
+      variant: "outline" as const,
+      disabled: !quote.convertedInvoiceId,
+      action: quote.convertedInvoiceId ? () => handlers.onOpenInvoice(quote) : undefined,
+    };
+  }
+
+  return {
+    title: "Devis annule",
+    description: "Le document est conserve pour l'historique, sans action commerciale active.",
+    label: "",
+    icon: null,
+    variant: "outline" as const,
+    action: undefined,
+  };
+}
+
+function isQuoteEditable(quote: Doc<"quotes">) {
+  return quote.status === "draft";
+}
+
+function buildQuoteTimeline(quote: Doc<"quotes">, emailEvents: Doc<"documentEmailEvents">[]) {
+  const isVoided = quote.status === "void";
+  const isRefused = quote.status === "refused";
+  const events = [
+    {
+      label: "Cree",
+      date: formatDate(quote.createdAt),
+      done: true,
+    },
+    {
+      label: "Envoye",
+      date: quote.sentAt ? formatDate(quote.sentAt) : undefined,
+      done: !!quote.sentAt || ["sent", "accepted", "refused", "invoiced", "void"].includes(quote.status),
+      current: quote.status === "sent",
+    },
+    {
+      label: isVoided ? "Annule" : isRefused ? "Refuse" : "Accepte",
+      date: isVoided && quote.voidedAt ? formatDate(quote.voidedAt) : isRefused && quote.refusedAt ? formatDate(quote.refusedAt) : quote.acceptedAt ? formatDate(quote.acceptedAt) : undefined,
+      done: isVoided || isRefused || quote.status === "accepted" || quote.status === "invoiced",
+      current: quote.status === "accepted" || isRefused || isVoided,
+      tone: isVoided || isRefused ? "danger" as const : "success" as const,
+    },
+    {
+      label: "Facture",
+      date: quote.invoicedAt ? formatDate(quote.invoicedAt) : undefined,
+      done: quote.status === "invoiced",
+      current: quote.status === "invoiced",
+      tone: "success" as const,
+    },
+  ];
+  return [
+    ...events.slice(0, 2),
+    ...emailEvents.map((event, index) => ({
+      label: index === 0 ? "Email envoye" : `Email envoye ${emailEvents.length - index}`,
+      date: formatDate(event.createdAt),
+      detail: [event.recipient, event.senderName ?? event.senderEmail].filter(Boolean).join(" - "),
+      done: true,
+      tone: "success" as const,
+    })),
+    ...events.slice(2),
+  ];
+}
+
 function PreviewSketch({
   form,
   material,
@@ -1125,11 +1842,13 @@ function PreviewSketch({
 function QuoteLinesTable({
   items,
   materials,
+  editable,
   onEdit,
   onDelete,
 }: {
   items: Doc<"quoteItems">[];
   materials: Material[];
+  editable: boolean;
   onEdit: (item: Doc<"quoteItems">) => void;
   onDelete: (itemId: Id<"quoteItems">) => void;
 }) {
@@ -1177,14 +1896,14 @@ function QuoteLinesTable({
             <SortableQuoteLineHeader label="Perte" sortKey="waste" activeSort={sort} onSort={toggleSort} />
             <SortableQuoteLineHeader label="Cout reel" sortKey="realCost" activeSort={sort} onSort={toggleSort} />
             <SortableQuoteLineHeader label="Total HT" sortKey="total" activeSort={sort} onSort={toggleSort} />
-            <th className="actions-cell" />
+            {editable ? <th className="actions-cell" /> : null}
           </tr>
         </thead>
         <tbody>
           {groupQuoteItems(sortedItems).map((group) => (
             <Fragment key={group.section}>
               <tr className="quote-section-row">
-                <td colSpan={8}>
+                <td colSpan={editable ? 8 : 7}>
                   <span>{group.section}</span>
                   <strong>{formatCurrency(group.totalHt)} HT</strong>
                 </td>
@@ -1202,16 +1921,18 @@ function QuoteLinesTable({
                       <td>{formatLineWaste(item, material ?? null)}</td>
                       <td>{formatCurrency(item.realCostHt ?? item.totalHt)}</td>
                       <td>{formatCurrency(item.totalHt)}</td>
-                      <td className="actions-cell">
-                        <div className="row-actions">
-                        <IconButton label="Modifier" onClick={() => onEdit(item)}><Edit3 className="h-4 w-4" /></IconButton>
-                        <IconButton label="Supprimer" variant="danger" onClick={() => void onDelete(item._id)}><Trash2 className="h-4 w-4" /></IconButton>
-                        </div>
-                      </td>
+                      {editable ? (
+                        <td className="actions-cell">
+                          <div className="row-actions">
+                            <IconButton label="Modifier" onClick={() => onEdit(item)}><Edit3 className="h-4 w-4" /></IconButton>
+                            <IconButton label="Supprimer" variant="danger" onClick={() => void onDelete(item._id)}><Trash2 className="h-4 w-4" /></IconButton>
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                     {sketch ? (
                       <tr className="quote-sketch-row">
-                        <td colSpan={8}>
+                        <td colSpan={editable ? 8 : 7}>
                           <div className="quote-sketch">
                             <span className="quote-sketch-label">Calcul</span>
                             {sketch.steps.map((step) => (
@@ -1296,6 +2017,82 @@ function compareLineSortValues(
     return (left - right) * multiplier;
   }
   return String(left).localeCompare(String(right), "fr-FR", { numeric: true, sensitivity: "base" }) * multiplier;
+}
+
+type QuoteTemplateListItem = {
+  key: string;
+  source: "builtin" | "custom";
+  template: Doc<"quoteTemplates"> | null;
+  name: string;
+  category: string;
+  description?: string;
+  favorite: boolean;
+  lineCount: number;
+};
+
+function QuoteTemplatePanel({
+  templates,
+  loading,
+  multiplier,
+  pending,
+  onMultiplierChange,
+  onApply,
+  onToggleFavorite,
+}: {
+  templates: QuoteTemplateListItem[];
+  loading: boolean;
+  multiplier: number;
+  pending: string | null;
+  onMultiplierChange: (value: number) => void;
+  onApply: (templateKey: string) => void;
+  onToggleFavorite: (templateId: Id<"quoteTemplates">, favorite: boolean) => void;
+}) {
+  const sortedTemplates = [...templates].sort(
+    (left, right) =>
+      Number(right.favorite) - Number(left.favorite) ||
+      left.category.localeCompare(right.category, "fr-FR") ||
+      left.name.localeCompare(right.name, "fr-FR"),
+  );
+
+  return (
+    <Panel
+      className="quote-template-panel"
+      title="Modeles rapides"
+      description="Applique une base de chiffrage puis ajuste les quantites et prix dans le brouillon."
+      actions={
+        <Field label="Quantite base" optional>
+          <NumberInput min={0.01} step="0.5" value={multiplier} onChange={(event) => onMultiplierChange(Number(event.target.value))} />
+        </Field>
+      }
+    >
+      {loading ? <EmptyState title="Chargement des modeles..." /> : null}
+      {!loading && sortedTemplates.length === 0 ? <EmptyState title="Aucun modele" description="Enregistre un devis existant comme modele pour le retrouver ici." /> : null}
+      <div className="quote-template-grid">
+        {sortedTemplates.map((template) => (
+          <article key={template.key} className="quote-template-card">
+            <div>
+              <span>{template.category}</span>
+              <strong>{template.name}</strong>
+              <p>{template.description ?? `${template.lineCount} ligne(s)`}</p>
+            </div>
+            <div className="quote-template-actions">
+              {template.template ? (
+                <IconButton label={template.favorite ? "Retirer des favoris" : "Ajouter aux favoris"} variant="outline" onClick={() => onToggleFavorite(template.template!._id, !template.favorite)}>
+                  <Star className={template.favorite ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+                </IconButton>
+              ) : (
+                <span className="template-native"><ClipboardList className="h-4 w-4" />Boorise</span>
+              )}
+              <Button size="sm" disabled={pending === `template-${template.key}`} onClick={() => onApply(template.key)}>
+                <Plus className="h-4 w-4" />
+                Appliquer
+              </Button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
 }
 
 function LineEditModal({
@@ -1441,11 +2238,6 @@ function QuoteDocument({
   return (
     <article id="quote-print-document" className="quote-document">
         <header className="quote-document-header">
-          <div>
-            <span className="quote-document-kicker">Devis</span>
-            <h1>{quote.number}</h1>
-            <p>{quote.title}</p>
-          </div>
           <div className="quote-document-company">
             {organization?.logoUrl ? <img src={organization.logoUrl} alt="" /> : <strong>B</strong>}
             <div>
@@ -1456,6 +2248,11 @@ function QuoteDocument({
               {organization?.phone ? <span>{organization.phone}</span> : null}
               {organization?.registerNumber ? <span>{organization.registerNumber}</span> : null}
             </div>
+          </div>
+          <div className="quote-document-identity">
+            <span className="quote-document-kicker">Devis</span>
+            <h1>{quote.number}</h1>
+            <p>{quote.title}</p>
           </div>
         </header>
 
@@ -1507,7 +2304,9 @@ function QuoteDocument({
             <tr>
               <th>Designation</th>
               <th>Quantite</th>
+              <th>Unite</th>
               <th>PU HT</th>
+              <th>TVA</th>
               <th>Total HT</th>
             </tr>
           </thead>
@@ -1515,13 +2314,15 @@ function QuoteDocument({
             {groupQuoteItems(items).map((group) => (
               <Fragment key={group.section}>
                 <tr className="quote-document-section">
-                  <td colSpan={4}>{group.section}</td>
+                  <td colSpan={6}>{group.section}</td>
                 </tr>
                 {group.items.map((item) => (
                   <tr key={item._id}>
                     <td>{item.description}</td>
-                    <td>{formatQuantity(item.quantity, item.unit)}</td>
+                    <td>{formatNumber(item.quantity)}</td>
+                    <td>{item.unit}</td>
                     <td>{formatCurrency(item.unitPriceHt)}</td>
+                    <td>{formatNumber(quote.vatRate)}%</td>
                     <td>{formatCurrency(item.totalHt)}</td>
                   </tr>
                 ))}
@@ -1859,72 +2660,6 @@ function dateInputToTimestamp(value: string) {
   }
   const timestamp = new Date(`${value}T12:00:00`).getTime();
   return Number.isFinite(timestamp) ? timestamp : undefined;
-}
-
-function printQuoteDocument(title: string) {
-  const element = document.getElementById("quote-print-document");
-  if (!element) {
-    window.print();
-    return;
-  }
-  const popup = window.open("", "_blank", "width=980,height=1200");
-  if (!popup) {
-    window.print();
-    return;
-  }
-  popup.document.write(`<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #f6efe7; color: #24172b; font-family: Inter, Arial, sans-serif; }
-    .quote-document { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fffaf3; padding: 18mm; }
-    .quote-document-header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 3px solid #E54715; padding-bottom: 18px; }
-    .quote-document-kicker, .quote-document-meta span, .quote-document-note span, .quote-document-terms span { color: #622B86; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-    h1 { color: #491474; font-size: 34px; margin: 5px 0; }
-    p { margin: 4px 0; line-height: 1.5; }
-    .quote-document-company { display: flex; gap: 12px; max-width: 48%; text-align: right; justify-content: flex-end; }
-    .quote-document-company img { width: 54px; height: 54px; object-fit: contain; }
-    .quote-document-company strong { display: grid; place-items: center; width: 54px; height: 54px; background: #491474; color: white; border-radius: 12px; }
-    .quote-document-company div { display: grid; gap: 3px; font-size: 12px; }
-    .quote-document-meta { display: grid; grid-template-columns: 1.4fr 0.8fr 0.8fr; gap: 16px; margin: 24px 0; }
-    .quote-document-meta > div, .quote-document-note, .quote-document-terms > div, .quote-document-totals { border: 1px solid #e5d2ba; border-radius: 12px; padding: 12px; background: white; }
-    .quote-document-meta strong { display: block; color: #491474; margin: 3px 0 9px; }
-    .quote-document-table { width: 100%; border-collapse: collapse; margin-top: 18px; }
-    .quote-document-table th { background: #491474; color: white; padding: 10px; text-align: left; font-size: 12px; }
-    .quote-document-table td { border-bottom: 1px solid #ead9c5; padding: 10px; font-size: 12px; }
-    .quote-document-table th:nth-child(n+2), .quote-document-table td:nth-child(n+2) { text-align: right; }
-    .quote-document-section td { background: #f1e3d1; color: #491474; font-weight: 800; text-align: left !important; }
-    .quote-document-bottom { display: grid; grid-template-columns: 1fr 260px; gap: 18px; margin-top: 24px; align-items: start; }
-    .quote-document-terms { display: grid; gap: 10px; }
-    .quote-document-totals { display: grid; gap: 9px; }
-    .quote-document-totals div { display: flex; justify-content: space-between; gap: 16px; }
-    .quote-document-totals div:last-child { border-top: 2px solid #E54715; padding-top: 10px; color: #E54715; font-size: 18px; }
-    .quote-document-footer { display: flex; justify-content: space-between; margin-top: 34px; padding-top: 18px; border-top: 1px solid #e5d2ba; color: #622B86; font-weight: 800; }
-    @page { size: A4; margin: 0; }
-    @media print { body { background: white; } .quote-document { margin: 0; box-shadow: none; } }
-  </style>
-</head>
-<body>${element.outerHTML}</body>
-</html>`);
-  popup.document.close();
-  popup.focus();
-  popup.print();
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => {
-    const entities: Record<string, string> = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;",
-    };
-    return entities[character];
-  });
 }
 
 function round2(value: number) {

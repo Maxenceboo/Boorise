@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Search,
   ShieldCheck,
   UsersRound,
   X,
@@ -19,6 +20,7 @@ import { useState } from "react";
 import { api } from "#convex/_generated/api";
 import type { Doc } from "#convex/_generated/dataModel";
 import { Button, IconButton } from "@/components/ui/app";
+import { useSeo } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
 type NavItemConfig = {
@@ -73,7 +75,16 @@ export function AppShell() {
   const current = useQuery(api.app.current);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchResults = useQuery(api.search.global, globalSearch.trim().length >= 2 ? { query: globalSearch } : "skip");
   const active = navigation.find((item) => item.to === pathname || item.aliases?.includes(pathname)) ?? navigation[0];
+  useSeo({
+    title: `${active.label} - Boorise`,
+    description: `${active.description} dans l'espace prive Boorise.`,
+    canonicalPath: "/",
+    noIndex: true,
+  });
 
   return (
     <div className="app-shell">
@@ -98,6 +109,33 @@ export function AppShell() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="global-search">
+              <Search className="h-4 w-4" />
+              <input
+                value={globalSearch}
+                placeholder="Rechercher client, devis, facture, materiau..."
+                onChange={(event) => {
+                  setGlobalSearch(event.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+              />
+              {searchOpen && globalSearch.trim().length >= 2 ? (
+                <GlobalSearchResults
+                  results={searchResults}
+                  onClose={() => {
+                    setSearchOpen(false);
+                    setGlobalSearch("");
+                  }}
+                  onNavigate={(href, id, group) => {
+                    rememberFocusedResult(group, id);
+                    setSearchOpen(false);
+                    setGlobalSearch("");
+                    void navigate({ to: href });
+                  }}
+                />
+              ) : null}
+            </div>
             <Button className="hidden md:inline-flex" size="sm" onClick={() => void navigate({ to: "/devis" })}>
               <FileText className="h-4 w-4" />
               Devis
@@ -163,6 +201,82 @@ function Sidebar({
       </div>
     </aside>
   );
+}
+
+type GlobalSearchPayload = {
+  clients: SearchResult[];
+  quotes: SearchResult[];
+  invoices: SearchResult[];
+  materials: SearchResult[];
+  services: SearchResult[];
+};
+
+type SearchResult = {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+};
+
+function GlobalSearchResults({
+  results,
+  onClose,
+  onNavigate,
+}: {
+  results: GlobalSearchPayload | undefined;
+  onClose: () => void;
+  onNavigate: (href: string, id: string, group: keyof GlobalSearchPayload) => void;
+}) {
+  const groups: Array<[keyof GlobalSearchPayload, string]> = [
+    ["clients", "Clients"],
+    ["quotes", "Devis"],
+    ["invoices", "Factures"],
+    ["materials", "Materiaux"],
+    ["services", "Prestations"],
+  ];
+  const total = results ? groups.reduce((sum, [key]) => sum + results[key].length, 0) : 0;
+
+  return (
+    <div className="global-search-popover">
+      <div className="global-search-head">
+        <strong>Recherche globale</strong>
+        <button type="button" onClick={onClose}>Fermer</button>
+      </div>
+      {results === undefined ? <p>Recherche...</p> : total === 0 ? <p>Aucun resultat.</p> : null}
+      {results ? groups.map(([key, label]) => {
+        const rows = results[key];
+        if (rows.length === 0) {
+          return null;
+        }
+        return (
+          <section key={key}>
+            <span>{label}</span>
+            {rows.map((row) => (
+              <button key={`${key}-${row.id}`} type="button" onClick={() => onNavigate(row.href, row.id, key)}>
+                <strong>{row.title}</strong>
+                <small>{row.detail || row.href}</small>
+              </button>
+            ))}
+          </section>
+        );
+      }) : null}
+    </div>
+  );
+}
+
+function rememberFocusedResult(group: keyof GlobalSearchPayload, id: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (group === "clients") {
+    sessionStorage.setItem("boorise:focusClientId", id);
+  }
+  if (group === "quotes") {
+    sessionStorage.setItem("boorise:focusQuoteId", id);
+  }
+  if (group === "invoices") {
+    sessionStorage.setItem("boorise:focusInvoiceId", id);
+  }
 }
 
 function companyInitial(name: string) {

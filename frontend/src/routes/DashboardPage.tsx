@@ -1,12 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { ArrowRight, BarChart3, FileText, ReceiptText } from "lucide-react";
+import { ArrowRight, BarChart3, FileText, MailWarning, PackageCheck, ReceiptText } from "lucide-react";
+import type { ReactNode } from "react";
 import { api } from "#convex/_generated/api";
 import type { Doc } from "#convex/_generated/dataModel";
 import { Badge, Button, DataTable, EmptyState, PageHeader, Panel } from "@/components/ui/app";
 import { formatCurrency, formatDate } from "@/lib/format";
 
-type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced";
+type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "invoiced" | "void";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "void";
 
 const quoteStatusLabels: Record<QuoteStatus, string> = {
@@ -15,6 +16,7 @@ const quoteStatusLabels: Record<QuoteStatus, string> = {
   accepted: "Accepte",
   refused: "Refuse",
   invoiced: "Facture",
+  void: "Annule",
 };
 
 const quoteStatusTones: Record<QuoteStatus, "slate" | "indigo" | "emerald" | "rose" | "cyan"> = {
@@ -23,6 +25,7 @@ const quoteStatusTones: Record<QuoteStatus, "slate" | "indigo" | "emerald" | "ro
   accepted: "emerald",
   refused: "rose",
   invoiced: "cyan",
+  void: "rose",
 };
 
 const quoteStatusOrder: Record<QuoteStatus, number> = {
@@ -31,6 +34,7 @@ const quoteStatusOrder: Record<QuoteStatus, number> = {
   accepted: 3,
   invoiced: 4,
   refused: 5,
+  void: 6,
 };
 
 const invoiceStatusLabels: Record<InvoiceStatus, string> = {
@@ -51,17 +55,14 @@ const invoiceStatusTones: Record<InvoiceStatus, "slate" | "indigo" | "emerald" |
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const current = useQuery(api.app.current);
   const dashboard = useQuery(api.app.dashboard);
-  const companyName = current?.organization?.name ?? "Ton entreprise";
   const urgentCount = dashboard
-    ? dashboard.alerts.overdueInvoices + dashboard.alerts.quotesToFollowUp + dashboard.alerts.expiredQuotes
+    ? dashboard.alerts.overdueInvoices + dashboard.alerts.quotesToFollowUp + dashboard.alerts.expiredQuotes + dashboard.alerts.clientsWithoutEmail + dashboard.alerts.incompleteMaterials
     : 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Pilotage"
         title="Dashboard"
         description="Priorites commerciales, encaissements, marge estimee et hygiene catalogue."
         actions={
@@ -84,7 +85,6 @@ export function DashboardPage() {
 
       <section className="ops-hero">
         <div>
-          <div className="eyebrow border-white/20 bg-white/10 text-cyan-100">{companyName}</div>
           <h2>{urgentCount > 0 ? `${urgentCount} priorite(s) a traiter` : "Activite sous controle"}</h2>
           <p>
             Ton espace met devant toi ce qui demande une action: encaissement, relance, expiration de devis et catalogue.
@@ -94,9 +94,28 @@ export function DashboardPage() {
           <CommandRow label="Factures en retard" value={dashboard?.pipeline.overdueInvoices ?? 0} tone="danger" onClick={() => void navigate({ to: "/factures" })} />
           <CommandRow label="Factures a echeance" value={dashboard?.pipeline.dueSoonInvoices ?? 0} tone="warning" onClick={() => void navigate({ to: "/factures" })} />
           <CommandRow label="Devis a relancer" value={dashboard?.pipeline.quotesToFollowUp ?? 0} tone="info" onClick={() => void navigate({ to: "/devis" })} />
-          <CommandRow label="Fiches catalogue a completer" value={dashboard?.alerts.lowCatalogDetail ?? 0} tone="muted" onClick={() => void navigate({ to: "/materiaux" })} />
+          <CommandRow label="Clients sans email" value={dashboard?.alerts.clientsWithoutEmail ?? 0} tone="warning" onClick={() => void navigate({ to: "/clients" })} />
+          <CommandRow label="Materiaux incomplets" value={dashboard?.alerts.incompleteMaterials ?? 0} tone="muted" onClick={() => void navigate({ to: "/materiaux" })} />
         </div>
       </section>
+
+      <div className="business-kpi-grid">
+        <section className="business-kpi-card">
+          <span>Marge reelle signee</span>
+          <strong>{formatCurrency(dashboard?.totals.realMarginHt ?? 0)}</strong>
+          <small>{(dashboard?.totals.realMarginRate ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })}% sur devis acceptes/factures</small>
+        </section>
+        <section className="business-kpi-card">
+          <span>Cout reel signe</span>
+          <strong>{formatCurrency(dashboard?.totals.signedCostHt ?? 0)}</strong>
+          <small>Materiaux, prestations et lignes libres</small>
+        </section>
+        <section className="business-kpi-card">
+          <span>CA accepte</span>
+          <strong>{formatCurrency(dashboard?.totals.acceptedQuotesTtc ?? 0)}</strong>
+          <small>Devis acceptes et deja factures</small>
+        </section>
+      </div>
 
       <Panel title="Priorites" description="Ce qui merite une action maintenant.">
         <div className="priority-board priority-board-wide">
@@ -133,6 +152,30 @@ export function DashboardPage() {
               tone: "warning" as const,
             }))}
           />
+          <PriorityGroup
+            title="Clients sans email"
+            empty="Tous les clients actifs ont un email."
+            icon={<MailWarning className="h-4 w-4" />}
+            items={(dashboard?.priorities.clientsWithoutEmail ?? []).map((client) => ({
+              key: client._id,
+              title: client.companyName ?? client.name,
+              detail: [client.firstName, client.name, client.city].filter(Boolean).join(" - ") || "Contact a completer",
+              amount: "Email",
+              tone: "warning" as const,
+            }))}
+          />
+          <PriorityGroup
+            title="Materiaux incomplets"
+            empty="Le catalogue actif est complet."
+            icon={<PackageCheck className="h-4 w-4" />}
+            items={(dashboard?.priorities.incompleteMaterials ?? []).map((material) => ({
+              key: material._id,
+              title: material.name,
+              detail: [material.reference ? null : "reference", material.category ? null : "categorie", material.supplier ? null : "fournisseur"].filter(Boolean).join(", ") || "conditionnement a verifier",
+              amount: material.unit,
+              tone: "info" as const,
+            }))}
+          />
         </div>
       </Panel>
 
@@ -150,6 +193,7 @@ export function DashboardPage() {
               { key: "client", header: "Client", sortValue: (quote) => formatClientName(quote.client), render: (quote) => formatClientName(quote.client) },
               { key: "date", header: "Date", sortValue: (quote) => quote.issueDate, render: (quote) => formatDate(quote.issueDate) },
               { key: "total", header: "Total TTC", sortValue: (quote) => quote.totalTtc, render: (quote) => formatCurrency(quote.totalTtc) },
+              { key: "margin", header: "Marge", sortValue: (quote) => quote.business.marginHt, render: (quote) => `${formatCurrency(quote.business.marginHt)} (${quote.business.marginRate.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}%)` },
               {
                 key: "status",
                 header: "Statut",
@@ -222,14 +266,16 @@ function PriorityGroup({
   title,
   empty,
   items,
+  icon,
 }: {
   title: string;
   empty: string;
+  icon?: ReactNode;
   items: Array<{ key: string; title: string; detail: string; amount: string; tone: "danger" | "warning" | "info" }>;
 }) {
   return (
     <section className="priority-group">
-      <h3>{title}</h3>
+      <h3>{icon}{title}</h3>
       {items.length === 0 ? (
         <div className="priority-empty">{empty}</div>
       ) : (

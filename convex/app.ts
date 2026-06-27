@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { groupQuoteItemsByQuoteId, summarizeQuoteItems } from "./businessMetrics";
 
 declare const process: {
   env: {
@@ -14,7 +15,7 @@ declare const process: {
 };
 
 const invitationTtlMs = 7 * 24 * 60 * 60 * 1000;
-const teamRoles = v.union(v.literal("admin"), v.literal("member"));
+const teamRoles = v.union(v.literal("admin"), v.literal("sales"), v.literal("readonly"));
 const operationTypeValidator = v.union(v.literal("goods"), v.literal("services"), v.literal("mixed"));
 const organizationDetailsValidator = {
   name: v.string(),
@@ -53,8 +54,13 @@ const organizationDetailsValidator = {
   professionalInsurance: v.optional(v.string()),
   mediatorInfo: v.optional(v.string()),
   acceptanceText: v.optional(v.string()),
+  accountingClientAccount: v.optional(v.string()),
+  accountingBankAccount: v.optional(v.string()),
+  accountingVatCollectedAccount: v.optional(v.string()),
+  accountingSalesGoodsAccount: v.optional(v.string()),
+  accountingSalesServicesAccount: v.optional(v.string()),
 };
-type TeamRole = "owner" | "admin" | "member";
+type TeamRole = "owner" | "admin" | "sales" | "readonly" | "member";
 type LoginMethods = {
   exists: boolean;
   hasPassword: boolean;
@@ -97,6 +103,11 @@ type OrganizationDetailsArgs = {
   professionalInsurance?: string;
   mediatorInfo?: string;
   acceptanceText?: string;
+  accountingClientAccount?: string;
+  accountingBankAccount?: string;
+  accountingVatCollectedAccount?: string;
+  accountingSalesGoodsAccount?: string;
+  accountingSalesServicesAccount?: string;
 };
 
 async function requireUser(ctx: QueryCtx | MutationCtx) {
@@ -157,6 +168,73 @@ export async function requireAdminOrOwner(ctx: QueryCtx | MutationCtx) {
   return currentMembership;
 }
 
+export async function requireBusinessWrite(ctx: QueryCtx | MutationCtx) {
+  const currentMembership = await requireCurrentMembership(ctx);
+  if (normalizedRole(currentMembership.membership.role) === "readonly") {
+    throw new Error("Droits en lecture seule: modification impossible");
+  }
+  return currentMembership;
+}
+
+export async function requireCatalogWrite(ctx: QueryCtx | MutationCtx) {
+  const currentMembership = await requireCurrentMembership(ctx);
+  const role = normalizedRole(currentMembership.membership.role);
+  if (role !== "owner" && role !== "admin") {
+    throw new Error("Droits administrateur requis pour modifier le catalogue");
+  }
+  return currentMembership;
+}
+
+export async function logActivity(
+  ctx: MutationCtx,
+  action: string,
+  resourceType: string,
+  resourceId: string | undefined,
+  summary: string,
+  metadata?: string,
+) {
+  const { user, organization } = await requireCurrentMembership(ctx);
+  await writeActivity(ctx, {
+    organizationId: organization._id,
+    actorUserId: user._id,
+    actorName: user.name,
+    actorEmail: user.email,
+    action,
+    resourceType,
+    resourceId,
+    summary,
+    metadata,
+  });
+}
+
+async function writeActivity(
+  ctx: MutationCtx,
+  input: {
+    organizationId: Id<"organizations">;
+    actorUserId?: Id<"users">;
+    actorName?: string;
+    actorEmail?: string;
+    action: string;
+    resourceType: string;
+    resourceId?: string;
+    summary: string;
+    metadata?: string;
+  },
+) {
+  await ctx.db.insert("activityLogs", {
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    actorName: cleanOptionalString(input.actorName),
+    actorEmail: cleanOptionalString(input.actorEmail),
+    action: cleanRequiredString(input.action, "Action"),
+    resourceType: cleanRequiredString(input.resourceType, "Ressource"),
+    resourceId: cleanOptionalString(input.resourceId),
+    summary: cleanRequiredString(input.summary, "Resume"),
+    metadata: cleanOptionalString(input.metadata),
+    createdAt: Date.now(),
+  });
+}
+
 export async function requireOwner(ctx: QueryCtx | MutationCtx) {
   const currentMembership = await requireCurrentMembership(ctx);
   if (currentMembership.membership.role !== "owner") {
@@ -186,6 +264,18 @@ export const current = query({
     const organization = membership ? await ctx.db.get(membership.organizationId) : null;
 
     return { user, organization, membership };
+  },
+});
+
+export const activityLog = query({
+  args: {},
+  handler: async (ctx) => {
+    const { organization } = await requireCurrentMembership(ctx);
+    return await ctx.db
+      .query("activityLogs")
+      .withIndex("by_organizationId_and_createdAt", (q) => q.eq("organizationId", organization._id))
+      .order("desc")
+      .take(80);
   },
 });
 
@@ -235,6 +325,15 @@ export const createOrganization = mutation({
       updatedAt: now,
     });
 
+    await writeActivity(ctx, {
+      organizationId,
+      actorUserId: user._id,
+      action: "organization.created",
+      resourceType: "organization",
+      resourceId: organizationId,
+      summary: `Entreprise creee: ${details.name}`,
+    });
+
     return organizationId;
   },
 });
@@ -249,6 +348,7 @@ export const updateOrganization = mutation({
       ...normalizeOrganizationDetails(args, organization.defaultOperationType, { requireLegalIdentity: false }),
       updatedAt: now,
     });
+    await logActivity(ctx, "organization.updated", "organization", organization._id, "Informations entreprise modifiees");
 
     return organization._id;
   },
@@ -272,6 +372,7 @@ export const team = query({
 
     return {
       currentRole: membership.role,
+      currentNormalizedRole: normalizedRole(membership.role),
       members: await Promise.all(
         members.map(async (member) => ({
           ...member,
@@ -308,6 +409,7 @@ export const createInvitationForEmail = internalMutation({
         revokedAt: undefined,
         updatedAt: now,
       });
+      await logActivity(ctx, "invitation.resent", "invitation", existingInvitation._id, `Invitation renvoyee a ${email}`);
       return {
         invitationId: existingInvitation._id,
         email,
@@ -327,6 +429,7 @@ export const createInvitationForEmail = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+    await logActivity(ctx, "invitation.created", "invitation", invitationId, `Invitation envoyee a ${email}`);
 
     return { invitationId, email, role: args.role, organizationName: organization.name };
   },
@@ -348,6 +451,54 @@ export const inviteMember = action({
     const inviteUrl = `${siteUrl()}/?invite=${encodeURIComponent(token)}`;
     await sendInvitationEmail(invitation.email, invitation.organizationName, inviteUrl, invitation.role);
     return { ok: true };
+  },
+});
+
+export const resendInvitation = action({
+  args: {
+    invitationId: v.id("organizationInvitations"),
+  },
+  handler: async (ctx, args) => {
+    const token = createInvitationToken();
+    const tokenHash = await hashToken(token);
+    const invitation = await ctx.runMutation(internal.app.refreshInvitationToken, {
+      invitationId: args.invitationId,
+      tokenHash,
+    });
+    const inviteUrl = `${siteUrl()}/?invite=${encodeURIComponent(token)}`;
+    await sendInvitationEmail(invitation.email, invitation.organizationName, inviteUrl, invitation.role);
+    return { ok: true };
+  },
+});
+
+export const refreshInvitationToken = internalMutation({
+  args: {
+    invitationId: v.id("organizationInvitations"),
+    tokenHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireAdminOrOwner(ctx);
+    const invitation = await ctx.db.get(args.invitationId);
+    if (!invitation || invitation.organizationId !== organization._id) {
+      throw new Error("Invitation introuvable");
+    }
+    if (invitation.status === "accepted") {
+      throw new Error("Invitation deja acceptee");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.invitationId, {
+      tokenHash: args.tokenHash,
+      status: "pending",
+      expiresAt: now + invitationTtlMs,
+      revokedAt: undefined,
+      updatedAt: now,
+    });
+    await logActivity(ctx, "invitation.resent", "invitation", args.invitationId, `Invitation renvoyee a ${invitation.email}`);
+    return {
+      email: invitation.email,
+      role: normalizedInvitationRole(invitation.role),
+      organizationName: organization.name,
+    };
   },
 });
 
@@ -447,7 +598,7 @@ export const acceptInvitation = mutation({
     await ctx.db.insert("organizationMembers", {
       organizationId: invitation.organizationId,
       userId: user._id,
-      role: invitation.role,
+      role: normalizedInvitationRole(invitation.role),
       createdAt: now,
       updatedAt: now,
     });
@@ -456,6 +607,16 @@ export const acceptInvitation = mutation({
       status: "accepted",
       acceptedAt: now,
       updatedAt: now,
+    });
+    await writeActivity(ctx, {
+      organizationId: invitation.organizationId,
+      actorUserId: user._id,
+      actorName: user.name,
+      actorEmail: userEmail,
+      action: "invitation.accepted",
+      resourceType: "member",
+      resourceId: user._id,
+      summary: `Invitation acceptee par ${userEmail}`,
     });
 
     return invitation.organizationId;
@@ -477,6 +638,7 @@ export const updateMemberRole = mutation({
       throw new Error("Le role du proprietaire ne peut pas etre modifie ici");
     }
     await ctx.db.patch(args.memberId, { role: args.role, updatedAt: Date.now() });
+    await logActivity(ctx, "member.role_updated", "member", args.memberId, `Role membre modifie: ${roleLabel(args.role)}`);
     return args.memberId;
   },
 });
@@ -495,6 +657,7 @@ export const removeMember = mutation({
       throw new Error("Le proprietaire ne peut pas etre retire");
     }
     await ctx.db.delete(args.memberId);
+    await logActivity(ctx, "member.removed", "member", args.memberId, "Membre retire de l'equipe");
     return args.memberId;
   },
 });
@@ -514,6 +677,7 @@ export const revokeInvitation = mutation({
       revokedAt: Date.now(),
       updatedAt: Date.now(),
     });
+    await logActivity(ctx, "invitation.revoked", "invitation", args.invitationId, `Invitation revoquee: ${invitation.email}`);
     return args.invitationId;
   },
 });
@@ -569,13 +733,23 @@ export const dashboard = query({
     const overdueInvoices = unpaidInvoices.filter((invoice) => invoice.dueDate < now);
     const dueSoonInvoices = unpaidInvoices.filter((invoice) => invoice.dueDate >= now && invoice.dueDate <= now + sevenDaysMs);
     const quotesToFollowUp = quotes.filter((quote) => quote.status === "sent" && now - quote.updatedAt >= sevenDaysMs);
-    const expiredQuotes = quotes.filter((quote) => quote.status !== "accepted" && quote.status !== "invoiced" && quote.validUntil !== undefined && quote.validUntil < now);
+    const expiredQuotes = quotes.filter((quote) => (quote.status === "draft" || quote.status === "sent" || quote.status === "refused") && quote.validUntil !== undefined && quote.validUntil < now);
     const materialCostHt = quoteItems.reduce((sum, item) => sum + (item.realCostHt ?? 0), 0);
     const itemsTotalHt = quoteItems.reduce((sum, item) => sum + item.totalHt, 0);
     const estimatedMarginHt = Math.max(0, itemsTotalHt - materialCostHt);
+    const quoteItemsByQuoteId = groupQuoteItemsByQuoteId(quoteItems);
+    const signedQuoteIds = new Set(
+      quotes
+        .filter((quote) => quote.status === "accepted" || quote.status === "invoiced")
+        .map((quote) => quote._id),
+    );
+    const signedItems = quoteItems.filter((item) => signedQuoteIds.has(item.quoteId));
+    const signedSummary = summarizeQuoteItems(signedItems);
     const conversionBase = quotes.filter((quote) => quote.status !== "draft").length;
     const wonQuotes = quotes.filter((quote) => quote.status === "accepted" || quote.status === "invoiced").length;
     const conversionRate = conversionBase > 0 ? Math.round((wonQuotes / conversionBase) * 10000) / 100 : 0;
+    const clientsWithoutEmail = activeClients.filter((client) => !client.email);
+    const incompleteMaterials = activeMaterials.filter(isMaterialIncomplete);
 
     return {
       counts: {
@@ -593,6 +767,9 @@ export const dashboard = query({
         paidInvoicesTtc: roundMoney(invoices.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
         estimatedMarginHt: roundMoney(estimatedMarginHt),
         estimatedMarginRate: itemsTotalHt > 0 ? Math.round((estimatedMarginHt / itemsTotalHt) * 10000) / 100 : 0,
+        realMarginHt: signedSummary.marginHt,
+        realMarginRate: signedSummary.marginRate,
+        signedCostHt: signedSummary.realCostHt,
         conversionRate,
       },
       pipeline: {
@@ -611,6 +788,7 @@ export const dashboard = query({
         quotes.slice(0, 6).map(async (quote) => ({
           ...quote,
           client: quote.clientId ? await ctx.db.get(quote.clientId) : null,
+          business: summarizeQuoteItems(quoteItemsByQuoteId.get(quote._id) ?? []),
         })),
       ),
       latestInvoices: await Promise.all(
@@ -660,6 +838,8 @@ export const dashboard = query({
               client: quote.clientId ? await ctx.db.get(quote.clientId) : null,
             })),
         ),
+        clientsWithoutEmail: clientsWithoutEmail.slice(0, 5),
+        incompleteMaterials: incompleteMaterials.slice(0, 5),
       },
       alerts: {
         openQuotes: openQuotes.length,
@@ -668,13 +848,100 @@ export const dashboard = query({
         dueSoonInvoices: dueSoonInvoices.length,
         quotesToFollowUp: quotesToFollowUp.length,
         expiredQuotes: expiredQuotes.length,
-        lowCatalogDetail: activeMaterials.filter(
-          (material) => !material.reference || !material.category || !material.supplier,
-        ).length,
+        clientsWithoutEmail: clientsWithoutEmail.length,
+        incompleteMaterials: incompleteMaterials.length,
+        lowCatalogDetail: incompleteMaterials.length,
       },
     };
   },
 });
+
+export const businessStats = query({
+  args: {
+    startAt: v.optional(v.number()),
+    endAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const organizationId = await requireCurrentOrganizationId(ctx);
+    const [quotes, invoices, quoteItems] = await Promise.all([
+      ctx.db
+        .query("quotes")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+        .order("desc")
+        .take(500),
+      ctx.db
+        .query("invoices")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+        .order("desc")
+        .take(300),
+      ctx.db
+        .query("quoteItems")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+        .order("desc")
+        .take(1500),
+    ]);
+
+    const startAt = args.startAt ?? 0;
+    const endAt = args.endAt ?? Number.MAX_SAFE_INTEGER;
+    const issuedQuotes = quotes.filter((quote) => inPeriod(quote.issueDate, startAt, endAt));
+    const decidedQuotes = issuedQuotes.filter((quote) => quote.status === "accepted" || quote.status === "invoiced" || quote.status === "refused");
+    const signedQuotes = quotes.filter((quote) =>
+      (quote.status === "accepted" || quote.status === "invoiced")
+      && inPeriod(quote.acceptedAt ?? quote.finalizedAt ?? quote.issueDate, startAt, endAt)
+    );
+    const billedInvoices = invoices.filter((invoice) =>
+      invoice.status !== "draft"
+      && invoice.status !== "void"
+      && inPeriod(invoice.issueDate, startAt, endAt)
+    );
+    const paidInvoices = invoices.filter((invoice) =>
+      invoice.status === "paid"
+      && invoice.paidAt !== undefined
+      && inPeriod(invoice.paidAt, startAt, endAt)
+    );
+    const wonCount = decidedQuotes.filter((quote) => quote.status === "accepted" || quote.status === "invoiced").length;
+    const acceptedRate = decidedQuotes.length > 0 ? roundRate((wonCount / decidedQuotes.length) * 100) : 0;
+    const signedIds = new Set(signedQuotes.map((quote) => quote._id));
+    const signedSummary = summarizeQuoteItems(quoteItems.filter((item) => signedIds.has(item.quoteId)));
+    const signedRevenueTtc = roundMoney(signedQuotes.reduce((sum, quote) => sum + quote.totalTtc, 0));
+
+    return {
+      period: { startAt, endAt },
+      counts: {
+        issuedQuotes: issuedQuotes.length,
+        decidedQuotes: decidedQuotes.length,
+        signedQuotes: signedQuotes.length,
+        billedInvoices: billedInvoices.length,
+        paidInvoices: paidInvoices.length,
+      },
+      totals: {
+        signedRevenueHt: roundMoney(signedQuotes.reduce((sum, quote) => sum + quote.totalHt, 0)),
+        signedRevenueTtc,
+        billedRevenueHt: roundMoney(billedInvoices.reduce((sum, invoice) => sum + invoice.totalHt, 0)),
+        billedRevenueTtc: roundMoney(billedInvoices.reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
+        paidRevenueTtc: roundMoney(paidInvoices.reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
+        averageBasketTtc: signedQuotes.length > 0 ? roundMoney(signedRevenueTtc / signedQuotes.length) : 0,
+        acceptanceRate: acceptedRate,
+        realCostHt: signedSummary.realCostHt,
+        realMarginHt: signedSummary.marginHt,
+        realMarginRate: signedSummary.marginRate,
+      },
+    };
+  },
+});
+
+function inPeriod(timestamp: number | undefined, startAt: number, endAt: number) {
+  return timestamp !== undefined && timestamp >= startAt && timestamp <= endAt;
+}
+
+function isMaterialIncomplete(material: Doc<"materials">) {
+  return (
+    !material.reference
+    || !material.category
+    || !material.supplier
+    || (!material.divisible && (!material.quantityPerLot || material.quantityPerLot <= 0))
+  );
+}
 
 function clampRate(value: number, label: string) {
   if (!Number.isFinite(value) || value < 0 || value > 100) {
@@ -774,6 +1041,11 @@ function normalizeOrganizationDetails(
     professionalInsurance: cleanOptionalString(args.professionalInsurance),
     mediatorInfo: cleanOptionalString(args.mediatorInfo),
     acceptanceText: cleanOptionalString(args.acceptanceText) ?? "Bon pour accord, date et signature precedees de la mention manuscrite.",
+    accountingClientAccount: cleanAccount(args.accountingClientAccount, "Compte client") ?? "411000",
+    accountingBankAccount: cleanAccount(args.accountingBankAccount, "Compte banque") ?? "512000",
+    accountingVatCollectedAccount: cleanAccount(args.accountingVatCollectedAccount, "Compte TVA collectee") ?? "445710",
+    accountingSalesGoodsAccount: cleanAccount(args.accountingSalesGoodsAccount, "Compte ventes de biens") ?? "707000",
+    accountingSalesServicesAccount: cleanAccount(args.accountingSalesServicesAccount, "Compte prestations") ?? "706000",
   };
 }
 
@@ -797,12 +1069,35 @@ function roundPositive(value: number, label: string) {
   return Math.round(value * 100) / 100;
 }
 
+function cleanAccount(value: string | undefined, label: string) {
+  const cleaned = cleanOptionalString(value)?.replace(/\s+/g, "").toUpperCase();
+  if (!cleaned) {
+    return undefined;
+  }
+  if (!/^[0-9A-Z]{3,20}$/.test(cleaned)) {
+    throw new Error(`${label} invalide`);
+  }
+  return cleaned;
+}
+
 function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function roundRate(value: number) {
   return Math.round(value * 100) / 100;
 }
 
 function normalizeEmail(value: string | undefined) {
   return cleanRequiredString(value ?? "", "Email").toLowerCase();
+}
+
+function normalizedRole(role: TeamRole): "owner" | "admin" | "sales" | "readonly" {
+  return role === "member" ? "sales" : role;
+}
+
+function normalizedInvitationRole(role: Exclude<TeamRole, "owner">): "admin" | "sales" | "readonly" {
+  return role === "member" ? "sales" : role;
 }
 
 async function findOpenInvitation(ctx: MutationCtx, organizationId: Id<"organizations">, email: string) {
@@ -947,7 +1242,14 @@ function oauthOnlyResetEmailHtml(loginUrl: string) {
 }
 
 function roleLabel(role: Exclude<TeamRole, "owner">) {
-  return role === "admin" ? "administrateur" : "membre";
+  const normalized = normalizedInvitationRole(role);
+  if (normalized === "admin") {
+    return "administrateur";
+  }
+  if (normalized === "readonly") {
+    return "lecture seule";
+  }
+  return "commercial";
 }
 
 function escapeHtml(value: string) {

@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import {
   Boxes,
   BarChart3,
+  BriefcaseBusiness,
   Building2,
   FileCheck2,
   FileText,
@@ -16,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "#convex/_generated/api";
 import type { Doc } from "#convex/_generated/dataModel";
 import { Button, IconButton } from "@/components/ui/app";
@@ -29,6 +30,7 @@ type NavItemConfig = {
   description: string;
   icon: LucideIcon;
   aliases?: string[];
+  requiresAccountantAccess?: boolean;
 };
 
 type NavSectionConfig = {
@@ -63,6 +65,7 @@ const navSections: NavSectionConfig[] = [
     items: [
       { to: "/parametres", label: "Entreprise", description: "Profil et defauts", icon: Building2 },
       { to: "/equipe", label: "Equipe", description: "Membres et invitations", icon: ShieldCheck },
+      { to: "/comptable", label: "Comptable", description: "Acces externes", icon: BriefcaseBusiness, requiresAccountantAccess: true },
     ],
   },
 ] ;
@@ -78,7 +81,18 @@ export function AppShell() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchResults = useQuery(api.search.global, globalSearch.trim().length >= 2 ? { query: globalSearch } : "skip");
-  const active = navigation.find((item) => item.to === pathname || item.aliases?.includes(pathname)) ?? navigation[0];
+  const hasAccountantAccess = (current?.accountantAccesses?.length ?? 0) > 0;
+  const visibleNavSections = useMemo(() => navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.requiresAccountantAccess || hasAccountantAccess || pathname === item.to),
+    }))
+    .filter((section) => section.items.length > 0), [hasAccountantAccess, pathname]);
+  const visibleNavigation = visibleNavSections.flatMap((section) => section.items);
+  const active = visibleNavigation.find((item) => item.to === pathname || item.aliases?.includes(pathname))
+    ?? navigation.find((item) => item.to === pathname)
+    ?? visibleNavigation[0]
+    ?? navigation[0];
   useSeo({
     title: `${active.label} - Boorise`,
     description: `${active.description} dans l'espace prive Boorise.`,
@@ -88,12 +102,12 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <Sidebar className="hidden lg:flex" organization={current?.organization ?? null} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+      <Sidebar className="hidden lg:flex" navSections={visibleNavSections} organization={current?.organization ?? null} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
 
       {mobileOpen ? (
         <div className="mobile-nav">
           <button className="mobile-nav-scrim" aria-label="Fermer le menu" onClick={() => setMobileOpen(false)} />
-          <Sidebar className="relative z-10 flex h-full w-80" organization={current?.organization ?? null} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+          <Sidebar className="relative z-10 flex h-full w-80" navSections={visibleNavSections} organization={current?.organization ?? null} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
         </div>
       ) : null}
 
@@ -159,11 +173,13 @@ export function AppShell() {
 
 function Sidebar({
   className,
+  navSections,
   organization,
   pathname,
   onNavigate,
 }: {
   className?: string;
+  navSections: NavSectionConfig[];
   organization: Doc<"organizations"> | null;
   pathname: string;
   onNavigate: () => void;

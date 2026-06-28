@@ -3453,6 +3453,65 @@ a {
   object-fit: cover;
 }
 
+.accountant-portal {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    linear-gradient(120deg, rgb(255 250 243 / 90%), rgb(229 210 186 / 72%)),
+    radial-gradient(circle at 88% 12%, rgb(229 71 21 / 13%), transparent 22rem),
+    radial-gradient(circle at 8% 42%, rgb(98 43 134 / 12%), transparent 30rem),
+    var(--bo-bg);
+}
+
+.accountant-shell {
+  display: grid;
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  gap: 18px;
+}
+
+.accountant-company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.accountant-company {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 74px;
+  align-items: center;
+  gap: 3px 10px;
+  border: 1px solid rgb(98 43 134 / 14%);
+  border-radius: 12px;
+  background: rgb(255 250 243 / 78%);
+  padding: 14px;
+  color: var(--bo-purple-900);
+  text-align: left;
+  box-shadow: 0 16px 44px rgb(73 20 116 / 7%);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.accountant-company:hover,
+.accountant-company.is-active {
+  border-color: rgb(229 71 21 / 52%);
+  background: rgb(255 250 243 / 96%);
+  transform: translateY(-1px);
+}
+
+.accountant-company span {
+  overflow: hidden;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountant-company small {
+  grid-column: 2;
+  color: var(--bo-muted);
+  font-size: 0.78rem;
+}
+
 .landing-page {
   position: relative;
   isolation: isolate;

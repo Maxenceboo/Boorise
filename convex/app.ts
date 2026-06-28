@@ -262,8 +262,23 @@ export const current = query({
       .unique();
 
     const organization = membership ? await ctx.db.get(membership.organizationId) : null;
+    const accountantAccesses = await ctx.db
+      .query("accountantAccesses")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .take(100);
+    const activeAccountantAccesses = accountantAccesses.filter((access) => access.status === "active");
 
-    return { user, organization, membership };
+    return {
+      user,
+      organization,
+      membership,
+      accountantAccesses: await Promise.all(
+        activeAccountantAccesses.map(async (access) => ({
+          ...access,
+          organization: await ctx.db.get(access.organizationId),
+        })),
+      ),
+    };
   },
 });
 
@@ -358,13 +373,23 @@ export const team = query({
   args: {},
   handler: async (ctx) => {
     const { organization, membership } = await requireCurrentMembership(ctx);
-    const [members, invitations] = await Promise.all([
+    const [members, invitations, accountantAccesses, accountantInvitations] = await Promise.all([
       ctx.db
         .query("organizationMembers")
         .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
         .take(100),
       ctx.db
         .query("organizationInvitations")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+        .order("desc")
+        .take(100),
+      ctx.db
+        .query("accountantAccesses")
+        .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+        .order("desc")
+        .take(100),
+      ctx.db
+        .query("accountantInvitations")
         .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
         .order("desc")
         .take(100),
@@ -380,6 +405,15 @@ export const team = query({
         })),
       ),
       invitations: invitations.filter((invitation) => invitation.status !== "accepted"),
+      accountantAccesses: await Promise.all(
+        accountantAccesses
+          .filter((access) => access.status === "active")
+          .map(async (access) => ({
+            ...access,
+            user: await ctx.db.get(access.userId),
+          })),
+      ),
+      accountantInvitations: accountantInvitations.filter((invitation) => invitation.status !== "accepted"),
     };
   },
 });
@@ -471,6 +505,103 @@ export const resendInvitation = action({
   },
 });
 
+export const createAccountantInvitationForEmail = internalMutation({
+  args: {
+    email: v.string(),
+    tokenHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { user, organization } = await requireAdminOrOwner(ctx);
+    const email = normalizeEmail(args.email);
+    const now = Date.now();
+
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .unique();
+    if (existingUser) {
+      const existingMember = await ctx.db
+        .query("organizationMembers")
+        .withIndex("by_organizationId_and_userId", (q) => q.eq("organizationId", organization._id).eq("userId", existingUser._id))
+        .unique();
+      if (existingMember) {
+        throw new Error("Cette personne est deja membre interne de l'entreprise");
+      }
+    }
+
+    const activeAccess = await findActiveAccountantAccessByEmail(ctx, organization._id, email);
+    if (activeAccess) {
+      throw new Error("Ce comptable a deja un acces actif a l'entreprise");
+    }
+
+    const existingInvitation = await findOpenAccountantInvitation(ctx, organization._id, email);
+    if (existingInvitation) {
+      await ctx.db.patch(existingInvitation._id, {
+        tokenHash: args.tokenHash,
+        status: "pending",
+        invitedByUserId: user._id,
+        expiresAt: now + invitationTtlMs,
+        revokedAt: undefined,
+        updatedAt: now,
+      });
+      await logActivity(ctx, "accountant_invitation.resent", "accountant", existingInvitation._id, `Invitation comptable renvoyee a ${email}`);
+      return {
+        invitationId: existingInvitation._id,
+        email,
+        organizationName: organization.name,
+      };
+    }
+
+    const invitationId = await ctx.db.insert("accountantInvitations", {
+      organizationId: organization._id,
+      email,
+      tokenHash: args.tokenHash,
+      status: "pending",
+      invitedByUserId: user._id,
+      expiresAt: now + invitationTtlMs,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await logActivity(ctx, "accountant_invitation.created", "accountant", invitationId, `Invitation comptable envoyee a ${email}`);
+
+    return { invitationId, email, organizationName: organization.name };
+  },
+});
+
+export const inviteAccountant = action({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const token = createInvitationToken();
+    const tokenHash = await hashToken(token);
+    const invitation = await ctx.runMutation(internal.app.createAccountantInvitationForEmail, {
+      email: args.email,
+      tokenHash,
+    });
+    const inviteUrl = `${siteUrl()}/?accountantInvite=${encodeURIComponent(token)}`;
+    await sendAccountantInvitationEmail(invitation.email, invitation.organizationName, inviteUrl);
+    return { ok: true };
+  },
+});
+
+export const resendAccountantInvitation = action({
+  args: {
+    invitationId: v.id("accountantInvitations"),
+  },
+  handler: async (ctx, args) => {
+    const token = createInvitationToken();
+    const tokenHash = await hashToken(token);
+    const invitation = await ctx.runMutation(internal.app.refreshAccountantInvitationToken, {
+      invitationId: args.invitationId,
+      tokenHash,
+    });
+    const inviteUrl = `${siteUrl()}/?accountantInvite=${encodeURIComponent(token)}`;
+    await sendAccountantInvitationEmail(invitation.email, invitation.organizationName, inviteUrl);
+    return { ok: true };
+  },
+});
+
 export const refreshInvitationToken = internalMutation({
   args: {
     invitationId: v.id("organizationInvitations"),
@@ -497,6 +628,36 @@ export const refreshInvitationToken = internalMutation({
     return {
       email: invitation.email,
       role: normalizedInvitationRole(invitation.role),
+      organizationName: organization.name,
+    };
+  },
+});
+
+export const refreshAccountantInvitationToken = internalMutation({
+  args: {
+    invitationId: v.id("accountantInvitations"),
+    tokenHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireAdminOrOwner(ctx);
+    const invitation = await ctx.db.get(args.invitationId);
+    if (!invitation || invitation.organizationId !== organization._id) {
+      throw new Error("Invitation comptable introuvable");
+    }
+    if (invitation.status === "accepted") {
+      throw new Error("Invitation deja acceptee");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.invitationId, {
+      tokenHash: args.tokenHash,
+      status: "pending",
+      expiresAt: now + invitationTtlMs,
+      revokedAt: undefined,
+      updatedAt: now,
+    });
+    await logActivity(ctx, "accountant_invitation.resent", "accountant", args.invitationId, `Invitation comptable renvoyee a ${invitation.email}`);
+    return {
+      email: invitation.email,
       organizationName: organization.name,
     };
   },
@@ -623,6 +784,77 @@ export const acceptInvitation = mutation({
   },
 });
 
+export const acceptAccountantInvitation = mutation({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const tokenHash = await hashToken(args.token);
+    const invitation = await ctx.db
+      .query("accountantInvitations")
+      .withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash))
+      .unique();
+    if (!invitation || invitation.status !== "pending") {
+      throw new Error("Invitation comptable invalide ou deja utilisee");
+    }
+
+    const now = Date.now();
+    if (invitation.expiresAt < now) {
+      await ctx.db.patch(invitation._id, { status: "expired", updatedAt: now });
+      throw new Error("Invitation comptable expiree");
+    }
+
+    const userEmail = normalizeEmail((user as Doc<"users"> & { email?: string }).email);
+    if (userEmail !== invitation.email) {
+      throw new Error("Cette invitation comptable est reservee a une autre adresse email");
+    }
+
+    const existingAccess = await ctx.db
+      .query("accountantAccesses")
+      .withIndex("by_organizationId_and_userId", (q) => q.eq("organizationId", invitation.organizationId).eq("userId", user._id))
+      .unique();
+
+    if (existingAccess) {
+      await ctx.db.patch(existingAccess._id, {
+        email: userEmail,
+        status: "active",
+        invitedByUserId: invitation.invitedByUserId,
+        revokedAt: undefined,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("accountantAccesses", {
+        organizationId: invitation.organizationId,
+        userId: user._id,
+        email: userEmail,
+        status: "active",
+        invitedByUserId: invitation.invitedByUserId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(invitation._id, {
+      status: "accepted",
+      acceptedAt: now,
+      updatedAt: now,
+    });
+    await writeActivity(ctx, {
+      organizationId: invitation.organizationId,
+      actorUserId: user._id,
+      actorName: user.name,
+      actorEmail: userEmail,
+      action: "accountant_invitation.accepted",
+      resourceType: "accountant",
+      resourceId: user._id,
+      summary: `Acces comptable accepte par ${userEmail}`,
+    });
+
+    return invitation.organizationId;
+  },
+});
+
 export const updateMemberRole = mutation({
   args: {
     memberId: v.id("organizationMembers"),
@@ -682,10 +914,147 @@ export const revokeInvitation = mutation({
   },
 });
 
+export const revokeAccountantInvitation = mutation({
+  args: {
+    invitationId: v.id("accountantInvitations"),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireAdminOrOwner(ctx);
+    const invitation = await ctx.db.get(args.invitationId);
+    if (!invitation || invitation.organizationId !== organization._id) {
+      throw new Error("Invitation comptable introuvable");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.invitationId, {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+    });
+    await logActivity(ctx, "accountant_invitation.revoked", "accountant", args.invitationId, `Invitation comptable revoquee: ${invitation.email}`);
+    return args.invitationId;
+  },
+});
+
+export const revokeAccountantAccess = mutation({
+  args: {
+    accessId: v.id("accountantAccesses"),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireAdminOrOwner(ctx);
+    const access = await ctx.db.get(args.accessId);
+    if (!access || access.organizationId !== organization._id) {
+      throw new Error("Acces comptable introuvable");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.accessId, {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+    });
+    await logActivity(ctx, "accountant_access.revoked", "accountant", args.accessId, `Acces comptable retire: ${access.email}`);
+    return args.accessId;
+  },
+});
+
 export async function requireCurrentOrganizationId(ctx: QueryCtx | MutationCtx): Promise<Id<"organizations">> {
   const currentMembership = await requireCurrentMembership(ctx);
   return currentMembership.organization._id;
 }
+
+export const accountantWorkspace = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireUser(ctx);
+    const accesses = await ctx.db
+      .query("accountantAccesses")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .take(100);
+    const activeAccesses = accesses.filter((access) => access.status === "active");
+
+    return await Promise.all(
+      activeAccesses.map(async (access) => {
+        const organization = await ctx.db.get(access.organizationId);
+        if (!organization) {
+          return null;
+        }
+
+        const [clients, quotes, invoices, quoteItems, payments] = await Promise.all([
+          ctx.db
+            .query("clients")
+            .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+            .order("desc")
+            .take(200),
+          ctx.db
+            .query("quotes")
+            .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+            .order("desc")
+            .take(120),
+          ctx.db
+            .query("invoices")
+            .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+            .order("desc")
+            .take(120),
+          ctx.db
+            .query("quoteItems")
+            .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+            .order("desc")
+            .take(1200),
+          ctx.db
+            .query("invoicePayments")
+            .withIndex("by_organizationId", (q) => q.eq("organizationId", organization._id))
+            .order("desc")
+            .take(500),
+        ]);
+
+        const quoteItemsByQuoteId = groupQuoteItemsByQuoteId(quoteItems);
+        const clientsById = new Map(clients.map((client) => [client._id, client]));
+        const quotesById = new Map(quotes.map((quote) => [quote._id, quote]));
+        const paymentsByInvoiceId = new Map<Id<"invoices">, Doc<"invoicePayments">[]>();
+        for (const payment of payments) {
+          const rows = paymentsByInvoiceId.get(payment.invoiceId) ?? [];
+          rows.push(payment);
+          paymentsByInvoiceId.set(payment.invoiceId, rows);
+        }
+
+        return {
+          access,
+          organization,
+          counts: {
+            clients: clients.length,
+            quotes: quotes.length,
+            invoices: invoices.length,
+          },
+          totals: {
+            quotesTtc: roundMoney(quotes.reduce((sum, quote) => sum + quote.totalTtc, 0)),
+            invoicesTtc: roundMoney(invoices.reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
+            unpaidTtc: roundMoney(invoices.filter((invoice) => invoice.status !== "paid" && invoice.status !== "void").reduce((sum, invoice) => sum + invoice.totalTtc, 0)),
+          },
+          clients: clients.slice(0, 80),
+          quotes: quotes.slice(0, 80).map((quote) => ({
+            quote,
+            client: quote.clientId ? clientsById.get(quote.clientId) ?? null : null,
+            items: quoteItemsByQuoteId.get(quote._id) ?? [],
+            business: summarizeQuoteItems(quoteItemsByQuoteId.get(quote._id) ?? []),
+          })),
+          invoices: invoices.slice(0, 80).map((invoice) => {
+            const quote = invoice.quoteId ? quotesById.get(invoice.quoteId) ?? null : null;
+            const invoicePayments = paymentsByInvoiceId.get(invoice._id) ?? [];
+            const paidTotalTtc = roundMoney(invoicePayments.reduce((sum, payment) => sum + payment.amountTtc, 0));
+            return {
+              invoice,
+              client: invoice.clientId ? clientsById.get(invoice.clientId) ?? null : null,
+              quote,
+              items: quote ? quoteItemsByQuoteId.get(quote._id) ?? [] : [],
+              payments: invoicePayments,
+              paidTotalTtc,
+              remainingTtc: roundMoney(Math.max(0, invoice.totalTtc - paidTotalTtc)),
+            };
+          }),
+        };
+      }),
+    ).then((companies) => companies.filter((company) => company !== null));
+  },
+});
 
 export const dashboard = query({
   args: {},
@@ -1108,6 +1477,22 @@ async function findOpenInvitation(ctx: MutationCtx, organizationId: Id<"organiza
   return invitations.find((invitation) => invitation.status === "pending" || invitation.status === "expired") ?? null;
 }
 
+async function findOpenAccountantInvitation(ctx: MutationCtx, organizationId: Id<"organizations">, email: string) {
+  const invitations = await ctx.db
+    .query("accountantInvitations")
+    .withIndex("by_organizationId_and_email", (q) => q.eq("organizationId", organizationId).eq("email", email))
+    .take(20);
+  return invitations.find((invitation) => invitation.status === "pending" || invitation.status === "expired") ?? null;
+}
+
+async function findActiveAccountantAccessByEmail(ctx: MutationCtx, organizationId: Id<"organizations">, email: string) {
+  const accesses = await ctx.db
+    .query("accountantAccesses")
+    .withIndex("by_organizationId_and_email", (q) => q.eq("organizationId", organizationId).eq("email", email))
+    .take(20);
+  return accesses.find((access) => access.status === "active") ?? null;
+}
+
 function createInvitationToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -1171,6 +1556,43 @@ async function sendInvitationEmail(email: string, organizationName: string, invi
   }
 }
 
+async function sendAccountantInvitationEmail(email: string, organizationName: string, inviteUrl: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY est requis pour envoyer une invitation comptable");
+  }
+  const from = process.env.INVITATION_EMAIL_FROM ?? "Boorise <equipe@boorise.fr>";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: email,
+      subject: `Acces comptable lecture seule a ${organizationName}`,
+      text: [
+        "Bonjour,",
+        "",
+        `Tu as ete invite comme comptable externe pour ${organizationName} sur Boorise.`,
+        "Cet acces permet de consulter les clients, devis, factures et exports sans modifier les donnees.",
+        `Ouvre ce lien pour accepter l'acces comptable : ${inviteUrl}`,
+        "",
+        "Ce lien expire dans 7 jours.",
+        "",
+        "Boorise",
+      ].join("\n"),
+      html: accountantInvitationEmailHtml(organizationName, inviteUrl),
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Resend n'a pas pu envoyer l'invitation comptable: ${detail}`);
+  }
+}
+
 async function sendOAuthOnlyResetEmail(email: string) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -1219,6 +1641,24 @@ function invitationEmailHtml(organizationName: string, inviteUrl: string, role: 
         <h1 style="margin:24px 0 8px;font-size:24px;line-height:1.2;color:#491474">Invitation Boorise</h1>
         <p style="margin:0 0 18px;color:#7a5f6c;line-height:1.6">Tu as ete invite a rejoindre <strong>${escapedName}</strong> avec le role ${roleLabel(role)}.</p>
         <a href="${escapedUrl}" style="display:inline-block;border-radius:10px;background:#e54715;color:#fffaf3;padding:12px 18px;text-decoration:none;font-weight:800">Accepter l'invitation</a>
+        <p style="margin:22px 0 0;color:#7a5f6c;line-height:1.6">Ce lien expire dans 7 jours.</p>
+        <p style="margin:18px 0 0;color:#7a5f6c;font-size:13px;line-height:1.5">Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :<br><span style="word-break:break-all;color:#491474">${escapedUrl}</span></p>
+      </div>
+    </div>
+  `;
+}
+
+function accountantInvitationEmailHtml(organizationName: string, inviteUrl: string) {
+  const escapedUrl = escapeHtml(inviteUrl);
+  const escapedName = escapeHtml(organizationName);
+  return `
+    <div style="margin:0;background:#f7efe4;padding:32px;font-family:Inter,Arial,sans-serif;color:#2a1235">
+      <div style="max-width:560px;margin:0 auto;border:1px solid #ddc6aa;border-radius:16px;background:#fffaf3;padding:28px">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:#491474;color:#fffaf3;font-weight:900">B</div>
+        <h1 style="margin:24px 0 8px;font-size:24px;line-height:1.2;color:#491474">Acces comptable Boorise</h1>
+        <p style="margin:0 0 18px;color:#7a5f6c;line-height:1.6">Tu as ete invite comme comptable externe pour <strong>${escapedName}</strong>.</p>
+        <p style="margin:0 0 18px;color:#7a5f6c;line-height:1.6">L'acces est en lecture seule: consultation, telechargement PDF et exports, sans modification des donnees.</p>
+        <a href="${escapedUrl}" style="display:inline-block;border-radius:10px;background:#e54715;color:#fffaf3;padding:12px 18px;text-decoration:none;font-weight:800">Accepter l'acces comptable</a>
         <p style="margin:22px 0 0;color:#7a5f6c;line-height:1.6">Ce lien expire dans 7 jours.</p>
         <p style="margin:18px 0 0;color:#7a5f6c;font-size:13px;line-height:1.5">Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :<br><span style="word-break:break-all;color:#491474">${escapedUrl}</span></p>
       </div>

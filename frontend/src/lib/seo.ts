@@ -5,7 +5,7 @@ const siteName = "Boorise";
 const defaultTitle = "Boorise - ERP pour artisans";
 const defaultDescription =
   "Boorise aide les artisans a gerer clients, materiaux, devis, factures et calculs de quantites avec pertes, lots et marges.";
-const defaultImage = `${siteUrl}/brand/boorise-og.svg`;
+const defaultImage = `${siteUrl}/brand/boorise-og.png`;
 
 type SeoOptions = {
   title?: string;

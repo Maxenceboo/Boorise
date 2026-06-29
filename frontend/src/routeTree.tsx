@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, lazyRouteComponent, Outlet, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
+import { MarketingSeoPage } from "@/routes/MarketingSeoPage";
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -17,6 +18,90 @@ const indexRoute = createRoute({
   beforeLoad: () => {
     throw redirect({ to: "/dashboard" });
   },
+});
+
+const quoteSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-devis-artisan",
+  component: () => <MarketingSeoPage pageId="quote" />,
+});
+
+const invoiceSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-facture-artisan",
+  component: () => <MarketingSeoPage pageId="invoice" />,
+});
+
+const erpSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/erp-artisan-batiment",
+  component: () => <MarketingSeoPage pageId="erp" />,
+});
+
+const materialsSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/gestion-materiaux-artisan",
+  component: () => <MarketingSeoPage pageId="materials" />,
+});
+
+const carpenterSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-artisan-menuisier",
+  component: () => <MarketingSeoPage pageId="menuisier" />,
+});
+
+const painterSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-artisan-peintre",
+  component: () => <MarketingSeoPage pageId="peintre" />,
+});
+
+const drywallSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-artisan-plaquiste",
+  component: () => <MarketingSeoPage pageId="plaquiste" />,
+});
+
+const tilerSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-artisan-carreleur",
+  component: () => <MarketingSeoPage pageId="carreleur" />,
+});
+
+const masonSeoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logiciel-artisan-macon",
+  component: () => <MarketingSeoPage pageId="macon" />,
+});
+
+const pricingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tarifs",
+  component: () => <MarketingSeoPage pageId="pricing" />,
+});
+
+const contactRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/contact",
+  component: () => <MarketingSeoPage pageId="contact" />,
+});
+
+const legalRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/mentions-legales",
+  component: () => <MarketingSeoPage pageId="legal" />,
+});
+
+const privacyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/confidentialite",
+  component: () => <MarketingSeoPage pageId="privacy" />,
+});
+
+const termsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/conditions-utilisation",
+  component: () => <MarketingSeoPage pageId="terms" />,
 });
 
 const dashboardRoute = createRoute({
@@ -81,5 +166,19 @@ const accountantRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  quoteSeoRoute,
+  invoiceSeoRoute,
+  erpSeoRoute,
+  materialsSeoRoute,
+  carpenterSeoRoute,
+  painterSeoRoute,
+  drywallSeoRoute,
+  tilerSeoRoute,
+  masonSeoRoute,
+  pricingRoute,
+  contactRoute,
+  legalRoute,
+  privacyRoute,
+  termsRoute,
   appRoute.addChildren([dashboardRoute, statsRoute, clientsRoute, materialsRoute, servicesRoute, quotesRoute, invoicesRoute, settingsRoute, teamRoute, accountantRoute]),
 ]);

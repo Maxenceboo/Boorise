@@ -28,6 +28,23 @@ const OnboardingPage = lazy(() => import("@/components/auth/OnboardingPage").the
 const PublicQuotePage = lazy(() => import("@/routes/PublicQuotePage").then((module) => ({ default: module.PublicQuotePage })));
 const AccountantPortalPage = lazy(() => import("@/routes/AccountantPortalPage").then((module) => ({ default: module.AccountantPortalPage })));
 
+const publicMarketingPaths = new Set([
+  "/logiciel-devis-artisan",
+  "/logiciel-facture-artisan",
+  "/erp-artisan-batiment",
+  "/gestion-materiaux-artisan",
+  "/logiciel-artisan-menuisier",
+  "/logiciel-artisan-peintre",
+  "/logiciel-artisan-plaquiste",
+  "/logiciel-artisan-carreleur",
+  "/logiciel-artisan-macon",
+  "/tarifs",
+  "/contact",
+  "/mentions-legales",
+  "/confidentialite",
+  "/conditions-utilisation",
+]);
+
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
@@ -58,6 +75,7 @@ function shouldHandleAuthCode() {
 function AuthGate({ children }: { children: ReactNode }) {
   const publicQuoteToken = getPublicQuoteToken();
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const publicMarketingPath = isPublicMarketingPath();
 
   if (publicQuoteToken) {
     return (
@@ -65,6 +83,10 @@ function AuthGate({ children }: { children: ReactNode }) {
         <PublicQuotePage token={publicQuoteToken} />
       </Suspense>
     );
+  }
+
+  if (publicMarketingPath) {
+    return children;
   }
 
   if (isLoading) {
@@ -118,12 +140,17 @@ function WorkspaceGate({ children }: { children: ReactNode }) {
   const current = useQuery(api.app.current);
   const invitationToken = getInvitationToken();
   const accountantInvitationToken = getAccountantInvitationToken();
+  const publicMarketingPath = isPublicMarketingPath();
   useSeo({
     title: "Espace entreprise - Boorise",
     description: "Espace prive Boorise pour gerer clients, devis, factures, materiaux et equipe.",
     canonicalPath: "/",
-    noIndex: true,
+    noIndex: !publicMarketingPath,
   });
+
+  if (publicMarketingPath) {
+    return children;
+  }
 
   if (current === undefined) {
     return <LoadingScreen label="Chargement de l'espace..." />;
@@ -185,6 +212,13 @@ function getPublicQuoteToken() {
   }
   const match = window.location.pathname.match(/^\/public\/quote\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function isPublicMarketingPath() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return publicMarketingPaths.has(window.location.pathname);
 }
 
 function InvitationAcceptPage({ token }: { token: string }) {

@@ -195,6 +195,20 @@ export function LandingPage({
           <ArrowRight className="h-4 w-4" />
         </Button>
       </section>
+
+      <footer className="landing-footer">
+        <div>
+          <BooriseMark />
+          <span>Boorise - ERP artisans</span>
+        </div>
+        <nav>
+          <a href="/tarifs">Tarifs</a>
+          <a href="/contact">Contact</a>
+          <a href="/mentions-legales">Mentions legales</a>
+          <a href="/confidentialite">Confidentialite</a>
+          <a href="/conditions-utilisation">Conditions</a>
+        </nav>
+      </footer>
     </main>
   );
 }

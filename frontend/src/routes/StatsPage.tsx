@@ -192,7 +192,7 @@ export function StatsPage() {
   const visibleWidgets = widgets.filter((widget) => widget.visible);
 
   return (
-    <div className="space-y-6">
+    <div className="stats-page space-y-6">
       <PageHeader
         title="Stats"
         description="Indicateurs, graphiques, periode business et vues configurables."

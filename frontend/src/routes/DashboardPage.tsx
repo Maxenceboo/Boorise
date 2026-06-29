@@ -61,7 +61,7 @@ export function DashboardPage() {
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="dashboard-page space-y-6">
       <PageHeader
         title="Dashboard"
         description="Priorites commerciales, encaissements, marge estimee et hygiene catalogue."
@@ -182,6 +182,7 @@ export function DashboardPage() {
       <div className="grid gap-4 xl:grid-cols-[1.35fr_0.95fr]">
         <Panel title="Derniers devis" description="Documents recents et statut commercial.">
           <DataTable
+            mobileSort={false}
             density="compact"
             loading={dashboard === undefined}
             rows={dashboard?.latestQuotes ?? []}

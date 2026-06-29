@@ -467,6 +467,8 @@ export function DataTable<T>({
   selectedKey,
   density = "comfortable",
   loading = false,
+  mobileSort = true,
+  mobileSortLimit = 4,
 }: {
   rows: T[];
   columns: Array<{
@@ -483,6 +485,8 @@ export function DataTable<T>({
   selectedKey?: string | null;
   density?: "compact" | "comfortable";
   loading?: boolean;
+  mobileSort?: boolean;
+  mobileSortLimit?: number;
 }) {
   const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const sortedRows = useMemo(() => {
@@ -546,6 +550,28 @@ export function DataTable<T>({
 
   return (
     <div className={cn("table-wrap", `table-${density}`)}>
+      {mobileSort ? (
+        <div className="mobile-sort-bar" aria-label="Tri du tableau">
+          {columns
+            .filter((column) => column.sortable !== false && !!column.sortValue)
+            .slice(0, mobileSortLimit)
+            .map((column) => {
+              const active = sort?.key === column.key;
+              return (
+                <button
+                  key={column.key}
+                  type="button"
+                  className={cn(active && "mobile-sort-active")}
+                  aria-pressed={active}
+                  onClick={() => toggleSort(column)}
+                >
+                  <span>{column.header}</span>
+                  <i>{active ? (sort.direction === "asc" ? "↑" : "↓") : "↕"}</i>
+                </button>
+              );
+            })}
+        </div>
+      ) : null}
       <table className="data-table">
         <thead>
           <tr>
@@ -553,7 +579,11 @@ export function DataTable<T>({
               const sortable = column.sortable !== false && !!column.sortValue;
               const active = sort?.key === column.key;
               return (
-                <th key={column.key} className={column.className} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : undefined}>
+                <th
+                  key={column.key}
+                  className={cn(column.className, column.key === "actions" && "actions-cell")}
+                  aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : undefined}
+                >
                   {sortable ? (
                     <button type="button" className="sort-header" onClick={() => toggleSort(column)}>
                       <span>{column.header}</span>
@@ -575,7 +605,11 @@ export function DataTable<T>({
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
               >
                 {columns.map((column) => (
-                  <td key={column.key} className={column.className}>
+                  <td
+                    key={column.key}
+                    className={cn(column.className, column.key === "actions" && "actions-cell")}
+                    data-label={column.header}
+                  >
                     {column.render(row)}
                   </td>
                 ))}

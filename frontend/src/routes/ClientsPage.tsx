@@ -261,7 +261,7 @@ export function ClientsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="clients-page space-y-6">
       <PageHeader
         title="Clients"
         description="Une base client simple, rapide a filtrer, et reutilisable dans les devis."

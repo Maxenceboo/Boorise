@@ -38,6 +38,8 @@ type NavSectionConfig = {
   items: NavItemConfig[];
 };
 
+const mobilePrimaryRoutes = ["/dashboard", "/clients", "/devis", "/factures", "/materiaux"];
+
 const navSections: NavSectionConfig[] = [
   {
     label: "Vue d'ensemble",
@@ -119,7 +121,10 @@ export function AppShell() {
             </IconButton>
             <div className="topbar-company min-w-0">
               <div className="truncate text-sm font-semibold text-slate-950">{current?.organization?.name ?? "Entreprise"}</div>
-              <div className="truncate text-xs text-slate-500">{active.label} - {active.description}</div>
+              <div className="topbar-section-name truncate text-xs text-slate-500">
+                <span>{active.label}</span>
+                <span className="topbar-section-description"> - {active.description}</span>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -166,6 +171,7 @@ export function AppShell() {
         <main className="content">
           <Outlet />
         </main>
+        <MobileBottomNav items={visibleNavigation.filter((item) => mobilePrimaryRoutes.includes(item.to))} pathname={pathname} onNavigate={(href) => void navigate({ to: href })} />
       </div>
     </div>
   );
@@ -316,4 +322,43 @@ function NavItem({
       <span className="nav-label truncate">{item.label}</span>
     </Link>
   );
+}
+
+function MobileBottomNav({
+  items,
+  pathname,
+  onNavigate,
+}: {
+  items: NavItemConfig[];
+  pathname: string;
+  onNavigate: (href: string) => void;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Navigation principale mobile">
+      {items.map((item) => {
+        const Icon = item.icon;
+        const isActive = pathname === item.to || item.aliases?.includes(pathname);
+        return (
+          <button
+            key={item.to}
+            type="button"
+            className={cn(isActive && "mobile-bottom-nav-active")}
+            aria-current={isActive ? "page" : undefined}
+            onClick={() => onNavigate(item.to)}
+          >
+            <Icon className="h-5 w-5" />
+            <span>{mobileLabel(item.label)}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function mobileLabel(label: string) {
+  return label === "Dashboard" ? "Accueil" : label === "Catalogue" ? "Stock" : label;
 }

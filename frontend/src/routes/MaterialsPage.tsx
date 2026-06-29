@@ -356,7 +356,7 @@ export function MaterialsPage({ initialTab = "materials" }: { initialTab?: "mate
   }
 
   return (
-    <div className="space-y-6">
+    <div className="materials-page space-y-6">
       <PageHeader
         title={tab === "materials" ? "Materiaux" : "Prestations"}
         description={

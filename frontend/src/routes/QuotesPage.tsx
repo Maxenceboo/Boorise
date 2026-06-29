@@ -898,7 +898,7 @@ export function QuotesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="quotes-page space-y-6">
       <PageHeader
         title="Devis"
         description="Un atelier de chiffrage clair : choisir un devis, ajouter les lignes, controler les pertes et valider les totaux."

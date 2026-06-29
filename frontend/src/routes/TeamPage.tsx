@@ -180,7 +180,7 @@ export function TeamPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="team-page space-y-6">
       <PageHeader
         title="Equipe"
         description="Invite les collaborateurs, attribue les roles et garde le controle sur les acces a l'ERP."

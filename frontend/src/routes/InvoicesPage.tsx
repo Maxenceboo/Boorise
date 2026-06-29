@@ -295,7 +295,7 @@ export function InvoicesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="invoices-page space-y-6">
       <PageHeader
         title="Factures"
         description="Suivi simple des factures generees depuis les devis acceptes."
